@@ -126,6 +126,8 @@
   .chat-header-name-btn { background:none; border:none; padding:0; margin:0; text-align:left; color:inherit; cursor:pointer; }
   .chat-header-name-btn .chat-header-name { text-decoration:underline; text-decoration-thickness:1px; text-decoration-color:rgba(167,139,250,0.45); text-underline-offset:2px; }
   .chat-header-actions { display:flex; gap:6px; }
+  .new-message-jump-pill { align-self:center; margin:8px auto 0; max-width:calc(100% - 44px); border:none; border-radius:999px; background:linear-gradient(135deg,rgba(124,107,255,0.28),rgba(167,139,250,0.28)); color:#efe9ff; font-size:12px; font-weight:600; letter-spacing:0.1px; padding:8px 14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-shadow:0 6px 24px rgba(124,107,255,0.22); cursor:pointer; transition:opacity 0.18s ease, transform 0.18s ease; z-index:4; }
+  .new-message-jump-pill.hidden { opacity:0; transform:translateY(-4px); pointer-events:none; }
 
   /* MESSAGES */
   .messages { flex:1; overflow-y:auto; overflow-x:hidden; padding:16px 16px 8px; display:flex; flex-direction:column; gap:6px; scrollbar-width:none; position:relative; }

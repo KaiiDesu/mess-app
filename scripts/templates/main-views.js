@@ -51,6 +51,8 @@ window.ZapTemplateParts.mainViews = String.raw`
         </div>
       </div>
 
+      <button class="new-message-jump-pill hidden" id="new-message-jump-pill" onclick="jumpToLatestIncomingMessage()" type="button" aria-label="Jump to latest unseen message"></button>
+
       <div class="messages" id="messages-container">
         <div class="enc-badge"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Messages are end-to-end encrypted</span></div>
         <div id="chat-empty-state" style="padding:18px 12px;font-size:12px;color:var(--text3);text-align:center">Open a conversation to start chatting.</div>

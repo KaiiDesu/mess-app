@@ -2,6 +2,7 @@ window.pendingClientMessageIds = window.pendingClientMessageIds || new Set();
 window.typingStopTimeout = window.typingStopTimeout || null;
 window.remoteTypingHideTimeout = window.remoteTypingHideTimeout || null;
 window.selectedMessageRow = window.selectedMessageRow || null;
+window.latestOffscreenIncomingMessageId = window.latestOffscreenIncomingMessageId || null;
 
 let lastTypingEmitAt = 0;
 let hasActiveTypingSignal = false;
@@ -71,16 +72,83 @@ function scrollMessagesToBottom(force = false) {
   }
 }
 
-function forceScrollToLatestAfterOwnSend() {
-  const snap = () => {
-    if (typeof scrollMessagesToBottom === 'function') {
-      scrollMessagesToBottom(true);
-    }
-  };
+function isMessageRowVisibleOnScreen(row) {
+  const container = document.getElementById('messages-container');
+  if (!container || !row) return false;
 
-  snap();
-  requestAnimationFrame(snap);
-  setTimeout(snap, 90);
+  const containerRect = container.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  return rowRect.bottom > containerRect.top && rowRect.top < containerRect.bottom;
+}
+
+function getPreviewForIncomingMessage(payload) {
+  const contentType = String(payload?.content_type || '').toLowerCase();
+  if (contentType === 'image') return 'Sent a photo';
+  if (contentType === 'video') return 'Sent a video';
+  if (contentType === 'audio') return 'Sent a voice message';
+
+  const rawText = String(payload?.content || '').replace(/\s+/g, ' ').trim();
+  if (!rawText) return 'New message';
+
+  const words = rawText.split(' ');
+  const firstWords = words.slice(0, 4).join(' ');
+  const maxLength = 18;
+
+  if (rawText.length <= maxLength && words.length <= 4) {
+    return rawText;
+  }
+
+  const clipped = firstWords.slice(0, maxLength).trimEnd();
+  return `${clipped}...`;
+}
+
+function hideIncomingMessageJumpPill() {
+  const pill = document.getElementById('new-message-jump-pill');
+  if (!pill) return;
+
+  pill.classList.add('hidden');
+  pill.textContent = '';
+  window.latestOffscreenIncomingMessageId = null;
+}
+
+function showIncomingMessageJumpPill(messageId, previewText) {
+  const pill = document.getElementById('new-message-jump-pill');
+  if (!pill || !messageId) return;
+
+  window.latestOffscreenIncomingMessageId = messageId;
+  pill.textContent = previewText || 'New message...';
+  pill.classList.remove('hidden');
+}
+
+function refreshIncomingMessageJumpPillVisibility() {
+  const messageId = window.latestOffscreenIncomingMessageId;
+  if (!messageId) return;
+
+  const row = document.querySelector(`.msg-row[data-message-id="${messageId}"]`);
+  if (!row || isMessageRowVisibleOnScreen(row)) {
+    hideIncomingMessageJumpPill();
+  }
+}
+
+function jumpToLatestIncomingMessage() {
+  const messageId = window.latestOffscreenIncomingMessageId;
+  if (!messageId) return;
+
+  const row = document.querySelector(`.msg-row[data-message-id="${messageId}"]`);
+  if (!row) {
+    hideIncomingMessageJumpPill();
+    return;
+  }
+
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  requestAnimationFrame(() => {
+    refreshIncomingMessageJumpPillVisibility();
+  });
+
+  setTimeout(() => {
+    refreshIncomingMessageJumpPillVisibility();
+  }, 220);
 }
 
 function keepConversationPinnedToBottomDuringMediaLoad(container) {
@@ -425,8 +493,6 @@ function sendMessage() {
     }
   }
 
-  forceScrollToLatestAfterOwnSend();
-
   input.value = '';
   input.style.height = 'auto';
   document.getElementById('send-btn').style.display = 'none';
@@ -511,15 +577,11 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
     const wvId = row.querySelector('.voice-waveform')?.id;
     if (wvId) buildWaveform(wvId, 24);
   }
-  if (typeof scrollMessagesToBottom === 'function') {
-    scrollMessagesToBottom(false);
-  } else {
-    container.scrollTop = container.scrollHeight;
-  }
-
   if (isMe) {
     recomputeOutgoingStatusVisibility();
   }
+
+  return row;
 }
 
 function clearRenderedMessages() {
@@ -527,6 +589,7 @@ function clearRenderedMessages() {
   if (!container) return;
 
   container.querySelectorAll('.msg-row, .msg-date, #chat-empty-state').forEach((node) => node.remove());
+  hideIncomingMessageJumpPill();
 }
 
 function renderConversationMessages(messages) {
@@ -613,7 +676,6 @@ function simulateReply(trigger) {
   typingRow.className = 'msg-row';
   typingRow.innerHTML = '<div class="msg-avatar">😄</div><div class="bubble them" style="padding:0"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
   container.appendChild(typingRow);
-  container.scrollTop = container.scrollHeight;
 
   setTimeout(() => {
     container.removeChild(typingRow);
@@ -648,7 +710,6 @@ async function handleIncomingSocketMessage(payload) {
       payload.id,
       payload.created_at || new Date().toISOString()
     );
-    forceScrollToLatestAfterOwnSend();
     return;
   }
 
@@ -665,7 +726,6 @@ async function handleIncomingSocketMessage(payload) {
   if (isMe && payload.id) {
     const existingOwnRow = document.querySelector(`.msg-row.me[data-message-id="${payload.id}"]`);
     if (existingOwnRow) {
-      forceScrollToLatestAfterOwnSend();
       return;
     }
   }
@@ -675,7 +735,7 @@ async function handleIncomingSocketMessage(payload) {
     resolvedMediaUrl = await fetchMediaUrlById(payload.mediaId);
   }
 
-  addMessage(payload.content || '', isMe, payload.content_type === 'audio', payload.clientMessageId, {
+  const insertedRow = addMessage(payload.content || '', isMe, payload.content_type === 'audio', payload.clientMessageId, {
     messageId: payload.id,
     createdAt: payload.created_at,
     contentType: payload.content_type,
@@ -683,6 +743,10 @@ async function handleIncomingSocketMessage(payload) {
     fileName: payload.fileName,
     deliveryStatus: isMe ? 'Delivered' : null
   });
+
+  if (!isMe && insertedRow?.dataset?.messageId && !isMessageRowVisibleOnScreen(insertedRow)) {
+    showIncomingMessageJumpPill(insertedRow.dataset.messageId, getPreviewForIncomingMessage(payload));
+  }
 }
 
 function handleMessageReadReceipt(payload) {
@@ -717,8 +781,6 @@ function showRemoteTypingIndicator(payload) {
     row.innerHTML = '<div class="msg-avatar">😄</div><div class="bubble them" style="padding:0"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
     container.appendChild(row);
   }
-
-  container.scrollTop = container.scrollHeight;
 
   if (window.remoteTypingHideTimeout) {
     clearTimeout(window.remoteTypingHideTimeout);
@@ -775,3 +837,13 @@ window.showRemoteTypingIndicator = showRemoteTypingIndicator;
 window.hideRemoteTypingIndicator = hideRemoteTypingIndicator;
 window.renderConversationMessages = renderConversationMessages;
 window.addMessage = addMessage;
+window.jumpToLatestIncomingMessage = jumpToLatestIncomingMessage;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+
+  container.addEventListener('scroll', () => {
+    refreshIncomingMessageJumpPillVisibility();
+  });
+});
