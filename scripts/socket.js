@@ -11,11 +11,41 @@ function getSocketToken() {
   );
 }
 
+function isAppForeground() {
+  return window.__zapAppForeground !== false;
+}
+
+function setAppForeground(value) {
+  window.__zapAppForeground = Boolean(value);
+}
+
+function ensureAppForegroundTracking() {
+  if (window.__zapForegroundTrackingInitialized) return;
+  window.__zapForegroundTrackingInitialized = true;
+
+  setAppForeground(true);
+
+  document.addEventListener('visibilitychange', () => {
+    setAppForeground(document.visibilityState === 'visible');
+  });
+
+  // Mobile webviews and desktop browsers can differ in which lifecycle events fire.
+  window.addEventListener('focus', () => setAppForeground(true));
+  window.addEventListener('blur', () => setAppForeground(false));
+  window.addEventListener('pageshow', () => setAppForeground(true));
+  window.addEventListener('pagehide', () => setAppForeground(false));
+
+  document.addEventListener('resume', () => setAppForeground(true));
+  document.addEventListener('pause', () => setAppForeground(false));
+}
+
 function isConversationCurrentlyVisibleOnScreen(conversationId) {
   if (!conversationId) return false;
   if (currentView !== 'view-chat') return false;
   if (window.activeConversationId !== conversationId) return false;
+  if (!isAppForeground()) return false;
   if (document.visibilityState !== 'visible') return false;
+  if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
   return true;
 }
 
@@ -353,6 +383,8 @@ async function openConversationById(conversationId) {
 }
 
 function initSocket() {
+  ensureAppForegroundTracking();
+
   if (typeof io === 'undefined') {
     console.warn('[socket] socket.io client library not loaded');
     return;
