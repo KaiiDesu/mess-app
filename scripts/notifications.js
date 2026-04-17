@@ -79,6 +79,25 @@ async function ensureSystemNotificationPermission() {
   }
 }
 
+function installNotificationPermissionNudge() {
+  if (window.__zapNotificationNudgeInstalled) return;
+  window.__zapNotificationNudgeInstalled = true;
+
+  const requestFromGesture = () => {
+    if (typeof ensureSystemNotificationPermission === 'function') {
+      ensureSystemNotificationPermission();
+    }
+
+    document.removeEventListener('pointerdown', requestFromGesture, true);
+    document.removeEventListener('touchstart', requestFromGesture, true);
+    document.removeEventListener('keydown', requestFromGesture, true);
+  };
+
+  document.addEventListener('pointerdown', requestFromGesture, true);
+  document.addEventListener('touchstart', requestFromGesture, true);
+  document.addEventListener('keydown', requestFromGesture, true);
+}
+
 function showSystemNotification(options) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -146,3 +165,8 @@ window.hideInAppNotificationToast = hideInAppNotificationToast;
 window.showInAppNotificationToast = showInAppNotificationToast;
 window.notifyIncomingMessage = notifyIncomingMessage;
 window.ensureSystemNotificationPermission = ensureSystemNotificationPermission;
+window.installNotificationPermissionNudge = installNotificationPermissionNudge;
+
+document.addEventListener('DOMContentLoaded', () => {
+  installNotificationPermissionNudge();
+});

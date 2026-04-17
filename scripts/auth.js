@@ -142,6 +142,10 @@ async function hydrateProfileHeader() {
 }
 
 async function registerAccount() {
+  if (typeof window.ensureSystemNotificationPermission === 'function') {
+    window.ensureSystemNotificationPermission();
+  }
+
   const displayName = getAuthValue('register-name');
   const username = getAuthValue('register-username');
   const phone = getAuthValue('register-phone');
@@ -178,10 +182,6 @@ async function registerAccount() {
     connectSocketWithToken(payload.token);
   }
 
-  if (typeof window.ensureSystemNotificationPermission === 'function') {
-    window.ensureSystemNotificationPermission();
-  }
-
   if (typeof hydrateProfileHeader === 'function') {
     hydrateProfileHeader();
   }
@@ -190,6 +190,10 @@ async function registerAccount() {
 }
 
 async function loginAccount() {
+  if (typeof window.ensureSystemNotificationPermission === 'function') {
+    window.ensureSystemNotificationPermission();
+  }
+
   const email = getAuthValue('login-email');
   const password = getAuthValue('login-pass');
   const rememberMe = Boolean(document.getElementById('login-remember')?.checked);
@@ -216,10 +220,6 @@ async function loginAccount() {
 
   if (typeof connectSocketWithToken === 'function') {
     connectSocketWithToken(payload.token);
-  }
-
-  if (typeof window.ensureSystemNotificationPermission === 'function') {
-    window.ensureSystemNotificationPermission();
   }
 
   if (typeof hydrateProfileHeader === 'function') {
