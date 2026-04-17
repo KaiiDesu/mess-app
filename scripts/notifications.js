@@ -10,6 +10,18 @@ function getNotificationPreviewText(payload) {
   return text.length > 70 ? `${text.slice(0, 70)}...` : text;
 }
 
+function getCapacitorLocalNotifications() {
+  return window.Capacitor?.Plugins?.LocalNotifications || null;
+}
+
+function isNativeCapacitorRuntime() {
+  try {
+    return Boolean(window.Capacitor?.isNativePlatform && window.Capacitor.isNativePlatform());
+  } catch (_) {
+    return false;
+  }
+}
+
 function getNotificationSenderName(payload) {
   const fromPayload =
     payload?.sender?.display_name ||
@@ -80,6 +92,17 @@ function showInAppNotificationToast(options) {
 }
 
 async function ensureSystemNotificationPermission() {
+  const localNotifications = getCapacitorLocalNotifications();
+  if (isNativeCapacitorRuntime() && localNotifications) {
+    try {
+      const result = await localNotifications.requestPermissions();
+      const status = result?.display || result?.receive || 'denied';
+      return status === 'granted' ? 'granted' : 'denied';
+    } catch (_) {
+      return 'denied';
+    }
+  }
+
   if (!('Notification' in window)) return 'unsupported';
   if (Notification.permission === 'granted') return 'granted';
   if (Notification.permission === 'denied') return 'denied';
@@ -89,6 +112,27 @@ async function ensureSystemNotificationPermission() {
   } catch (_) {
     return 'denied';
   }
+}
+
+async function setupNativeNotificationChannel() {
+  const localNotifications = getCapacitorLocalNotifications();
+  if (!isNativeCapacitorRuntime() || !localNotifications) return;
+  if (window.__zapNativeNotificationChannelReady) return;
+
+  try {
+    await localNotifications.createChannel({
+      id: 'zap-messages',
+      name: 'Messages',
+      description: 'Incoming chat messages',
+      importance: 5,
+      visibility: 1,
+      sound: 'default'
+    });
+  } catch (_) {
+    // Some Android versions/devices may already have the channel.
+  }
+
+  window.__zapNativeNotificationChannelReady = true;
 }
 
 function installNotificationPermissionNudge() {
@@ -111,6 +155,34 @@ function installNotificationPermissionNudge() {
 }
 
 function showSystemNotification(options) {
+  const localNotifications = getCapacitorLocalNotifications();
+  if (isNativeCapacitorRuntime() && localNotifications) {
+    const conversationId = options?.conversationId;
+    const title = options?.senderName || 'New message';
+    const body = options?.messageText || 'You have a new message';
+    const notificationId = Number(Date.now() % 2147483000);
+
+    localNotifications
+      .schedule({
+        notifications: [
+          {
+            id: notificationId,
+            title,
+            body,
+            schedule: { at: new Date(Date.now() + 80) },
+            channelId: 'zap-messages',
+            extra: {
+              conversationId
+            }
+          }
+        ]
+      })
+      .catch(() => {
+        // Ignore native schedule errors.
+      });
+    return;
+  }
+
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
   const title = options?.senderName || 'New message';
@@ -134,6 +206,25 @@ function showSystemNotification(options) {
   } catch (_) {
     // Ignore system notification errors in unsupported webviews.
   }
+}
+
+function attachNativeNotificationListeners() {
+  const localNotifications = getCapacitorLocalNotifications();
+  if (!isNativeCapacitorRuntime() || !localNotifications) return;
+  if (window.__zapNativeNotificationListenersAttached) return;
+
+  localNotifications.addListener('localNotificationActionPerformed', (event) => {
+    const conversationId =
+      event?.notification?.extra?.conversationId ||
+      event?.actionId?.conversationId ||
+      null;
+
+    if (conversationId && typeof openConversationById === 'function') {
+      openConversationById(conversationId);
+    }
+  });
+
+  window.__zapNativeNotificationListenersAttached = true;
 }
 
 function shouldNotifyForIncomingMessage(payload) {
@@ -180,6 +271,8 @@ window.ensureSystemNotificationPermission = ensureSystemNotificationPermission;
 window.installNotificationPermissionNudge = installNotificationPermissionNudge;
 
 document.addEventListener('DOMContentLoaded', () => {
+  setupNativeNotificationChannel();
+  attachNativeNotificationListeners();
   installNotificationPermissionNudge();
   // Smoke-test the in-app notification surface once after boot.
   setTimeout(() => {
@@ -189,6 +282,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.ensureSystemNotificationPermissionWithFeedback = async () => {
   const result = await ensureSystemNotificationPermission();
+  if (result === 'granted') {
+    showInAppNotificationToast({
+      senderName: 'Zap',
+      messageText: 'System notifications are enabled.'
+    });
+
+    showSystemNotification({
+      senderName: 'Zap',
+      messageText: 'Notification test successful.',
+      conversationId: null
+    });
+  }
   if (result === 'unsupported') {
     showInAppNotificationToast({
       senderName: 'Zap',
