@@ -198,6 +198,19 @@ function renderConversationList(conversations) {
     .join('');
 }
 
+function renderConversationListLoadingState() {
+  const container = document.getElementById('chat-list');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="chat-loading-wrap" aria-live="polite" aria-busy="true">
+      <div class="chat-loading-item"></div>
+      <div class="chat-loading-item"></div>
+      <div class="chat-loading-item"></div>
+    </div>
+  `;
+}
+
 function upsertConversationFromIncomingMessage(payload) {
   const conversationId = payload?.conversation_id || payload?.conversationId;
   if (!conversationId) return;
@@ -267,6 +280,8 @@ async function loadConversations() {
     window.conversations = [];
     return;
   }
+
+  renderConversationListLoadingState();
 
   try {
     const response = await fetch(`${getApiBaseUrl()}/api/conversations`, {
@@ -392,6 +407,10 @@ async function openConversationById(conversationId) {
 
   window.activeConversationId = conversationId;
   joinConversation(conversationId);
+
+  if (typeof window.renderConversationLoadingState === 'function') {
+    window.renderConversationLoadingState();
+  }
 
   try {
     const messages = await fetchConversationMessages(conversationId);

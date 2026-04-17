@@ -20,7 +20,11 @@ window.ZapTemplateParts.mainViews = String.raw`
       <div class="stories-row" id="stories-row"></div>
 
       <div class="chat-list" id="chat-list">
-        <div style="padding:14px 20px;font-size:12px;color:var(--text3)">No conversations yet.</div>
+        <div class="chat-loading-wrap" aria-live="polite" aria-busy="true">
+          <div class="chat-loading-item"></div>
+          <div class="chat-loading-item"></div>
+          <div class="chat-loading-item"></div>
+        </div>
       </div>
 
       
@@ -55,7 +59,11 @@ window.ZapTemplateParts.mainViews = String.raw`
 
       <div class="messages" id="messages-container">
         <div class="enc-badge"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Messages are end-to-end encrypted</span></div>
-        <div id="chat-empty-state" style="padding:18px 12px;font-size:12px;color:var(--text3);text-align:center">Open a conversation to start chatting.</div>
+        <div class="conversation-loading-wrap" aria-live="polite" aria-busy="true">
+          <div class="conversation-loading-row"></div>
+          <div class="conversation-loading-row"></div>
+          <div class="conversation-loading-row"></div>
+        </div>
       </div>
 
       <!-- REACTION PICKER -->

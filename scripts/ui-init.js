@@ -113,28 +113,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (typeof loadConversations === 'function') {
     loadConversations();
-
-    setInterval(() => {
-      loadConversations();
-    }, 5000);
   }
 
   if (typeof loadPendingFriendRequests === 'function') {
     loadPendingFriendRequests();
-
-    // Keep pending requests fresh while testing multi-browser flow.
-    setInterval(() => {
-      loadPendingFriendRequests();
-    }, 4000);
   }
 
   if (typeof loadAcceptedFriends === 'function') {
     loadAcceptedFriends();
-
-    // Keep accepted friends list synced while testing multi-browser flow.
-    setInterval(() => {
-      loadAcceptedFriends();
-    }, 5000);
   }
 });
 
