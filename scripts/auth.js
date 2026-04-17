@@ -255,8 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-restore remembered login when app restarts on this device.
   const token = getStoredAuthToken();
-  const user = getStoredSessionUser();
-  if (token && user && currentView === 'view-login') {
+  if (token && currentView === 'view-login') {
     navigate('view-home');
   }
 });
