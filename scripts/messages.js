@@ -72,6 +72,14 @@ function scrollMessagesToBottom(force = false) {
   }
 }
 
+function scrollOwnMessageRowIntoView(row) {
+  const container = document.getElementById('messages-container');
+  if (!container || !row) return;
+
+  const targetTop = Math.max(0, row.offsetTop - container.clientHeight + row.offsetHeight + 18);
+  container.scrollTo({ top: targetTop, behavior: 'smooth' });
+}
+
 function isMessageRowVisibleOnScreen(row) {
   const container = document.getElementById('messages-container');
   if (!container || !row) return false;
@@ -482,7 +490,8 @@ function sendMessage() {
     window.pendingClientMessageIds.add(clientMessageId);
 
     // Optimistically render immediately on sender side.
-    addMessage(text, true, false, clientMessageId);
+    const insertedOwnRow = addMessage(text, true, false, clientMessageId);
+    scrollOwnMessageRowIntoView(insertedOwnRow);
 
     emitSocketEvent('message:send', {
       conversationId,
@@ -492,7 +501,8 @@ function sendMessage() {
     });
   } else {
     // Fallback for local-only preview when no active realtime conversation is set.
-    addMessage(text, true);
+    const insertedOwnRow = addMessage(text, true);
+    scrollOwnMessageRowIntoView(insertedOwnRow);
     if (!conversationId) {
       console.warn('[chat] No activeConversationId. Call joinConversation(conversationId) first.');
     }
