@@ -455,6 +455,10 @@ function initSocket() {
     console.log('[socket] message:received', payload);
     upsertConversationFromIncomingMessage(payload);
 
+    if (typeof window.notifyIncomingMessage === 'function') {
+      window.notifyIncomingMessage(payload);
+    }
+
     const conversationId = payload?.conversation_id || payload?.conversationId;
     const currentUserId = getCurrentSessionUserId();
     const senderId = payload?.sender_id || null;

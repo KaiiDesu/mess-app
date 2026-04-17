@@ -1,7 +1,10 @@
 function showToast() {
-  const toast = document.getElementById('toast');
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3500);
+  if (typeof window.showInAppNotificationToast === 'function') {
+    window.showInAppNotificationToast({
+      senderName: 'Zap',
+      messageText: 'Notifications are enabled.'
+    });
+  }
 }
 
 function addReaction(emoji) {
@@ -99,7 +102,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   buildWaveform('waveform-demo', 28);
-  setTimeout(showToast, 3000);
 
   if (typeof initSocket === 'function') {
     initSocket();

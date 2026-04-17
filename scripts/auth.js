@@ -178,6 +178,10 @@ async function registerAccount() {
     connectSocketWithToken(payload.token);
   }
 
+  if (typeof window.ensureSystemNotificationPermission === 'function') {
+    window.ensureSystemNotificationPermission();
+  }
+
   if (typeof hydrateProfileHeader === 'function') {
     hydrateProfileHeader();
   }
@@ -212,6 +216,10 @@ async function loginAccount() {
 
   if (typeof connectSocketWithToken === 'function') {
     connectSocketWithToken(payload.token);
+  }
+
+  if (typeof window.ensureSystemNotificationPermission === 'function') {
+    window.ensureSystemNotificationPermission();
   }
 
   if (typeof hydrateProfileHeader === 'function') {
