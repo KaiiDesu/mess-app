@@ -256,12 +256,6 @@ function notifyIncomingMessage(payload) {
 
   if (!inVisibleActiveConversation) {
     showInAppNotificationToast({ senderName, messageText, conversationId });
-  }
-
-  const appBackgrounded =
-    typeof isAppForeground === 'function' ? !isAppForeground() : document.visibilityState !== 'visible';
-
-  if (appBackgrounded) {
     showSystemNotification({ senderName, messageText, conversationId });
   }
 }
