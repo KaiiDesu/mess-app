@@ -140,7 +140,9 @@ function installNotificationPermissionNudge() {
   window.__zapNotificationNudgeInstalled = true;
 
   const requestFromGesture = () => {
-    if (typeof ensureSystemNotificationPermission === 'function') {
+    if (typeof window.ensureSystemNotificationPermissionWithFeedback === 'function') {
+      window.ensureSystemNotificationPermissionWithFeedback();
+    } else if (typeof ensureSystemNotificationPermission === 'function') {
       ensureSystemNotificationPermission();
     }
 
