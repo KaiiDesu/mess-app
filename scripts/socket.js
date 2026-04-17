@@ -415,6 +415,44 @@ function applyConversationSeenStateFromReadReceipt(payload) {
   renderConversationList(window.conversations);
 }
 
+function syncConversationLastMessageSeenStateFromMessages(conversationId, messages) {
+  if (!conversationId || !Array.isArray(messages)) return;
+
+  const conversation = (window.conversations || []).find((item) => item.id === conversationId);
+  const lastMessage = conversation?.lastMessage;
+  if (!conversation || !lastMessage?.id) return;
+
+  const currentUserId = getCurrentSessionUserId();
+  const otherUserId = conversation?.otherUser?.id;
+  if (!currentUserId || !otherUserId) return;
+
+  if (lastMessage.sender_id !== currentUserId) {
+    if (lastMessage.is_seen_by_other) {
+      conversation.lastMessage = {
+        ...lastMessage,
+        is_seen_by_other: false
+      };
+      writeCachedConversations(window.conversations);
+      renderConversationList(window.conversations);
+    }
+    return;
+  }
+
+  const matched = messages.find((msg) => msg?.id === lastMessage.id);
+  const readBy = Array.isArray(matched?.readBy) ? matched.readBy : [];
+  const isSeenByOther = readBy.includes(otherUserId);
+
+  if (Boolean(lastMessage.is_seen_by_other) === isSeenByOther) return;
+
+  conversation.lastMessage = {
+    ...lastMessage,
+    is_seen_by_other: isSeenByOther
+  };
+
+  writeCachedConversations(window.conversations);
+  renderConversationList(window.conversations);
+}
+
 function markMessagesAsRead(conversationId, messages) {
   const currentUserId = getCurrentSessionUserId();
   if (!currentUserId || !conversationId || !Array.isArray(messages) || !messages.length) {
@@ -606,6 +644,8 @@ async function openConversationById(conversationId) {
     if (typeof window.renderConversationMessages === 'function') {
       window.renderConversationMessages(messages);
     }
+
+    syncConversationLastMessageSeenStateFromMessages(conversationId, messages);
 
     if (isConversationCurrentlyVisibleOnScreen(conversationId)) {
       markMessagesAsRead(conversationId, messages);
