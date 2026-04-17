@@ -295,6 +295,7 @@
   /* REACTIONS */
   .reactions-row { display:flex; gap:4px; margin-top:4px; }
   .reaction { background:var(--bg3); border:1px solid var(--border2); border-radius:20px; padding:2px 7px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:3px; }
+  .reaction.reaction--mine { background:rgba(52,211,153,0.16); border-color:rgba(52,211,153,0.45); }
   .reaction span { font-size:10px; color:var(--text3); }
 
   /* MEDIA PREVIEW MODAL */
@@ -325,7 +326,8 @@
   /* REACTION PICKER */
   .reaction-picker { position:absolute; background:var(--bg3); border:1px solid var(--border2); border-radius:30px; padding:8px 12px; display:flex; gap:10px; z-index:100; bottom:60px; left:50%; transform:translateX(-50%); box-shadow:0 8px 32px rgba(0,0,0,0.5); opacity:0; pointer-events:none; transition:all 0.2s; }
   .reaction-picker.show { opacity:1; pointer-events:all; }
-  .reaction-emoji { font-size:22px; cursor:pointer; transition:transform 0.15s; }
+  .reaction-emoji { font-size:22px; cursor:pointer; transition:transform 0.15s; border-radius:999px; padding:2px 6px; }
+  .reaction-emoji.is-selected { background:rgba(52,211,153,0.2); box-shadow:0 0 0 1px rgba(52,211,153,0.35) inset; }
   .reaction-emoji:hover { transform:scale(1.3) translateY(-4px); }
 
   /* SEARCH RESULTS */

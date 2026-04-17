@@ -671,6 +671,18 @@ function initSocket() {
     }
   });
 
+  window.appSocket.on('message:reaction_added', (payload) => {
+    if (typeof window.handleMessageReactionAdded === 'function') {
+      window.handleMessageReactionAdded(payload);
+    }
+  });
+
+  window.appSocket.on('message:reaction_removed', (payload) => {
+    if (typeof window.handleMessageReactionRemoved === 'function') {
+      window.handleMessageReactionRemoved(payload);
+    }
+  });
+
   window.appSocket.on('conversation:joined', (payload) => {
     console.log('[socket] conversation:joined', payload);
     if (payload?.conversationId) {

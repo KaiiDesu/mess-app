@@ -3,9 +3,200 @@ window.typingStopTimeout = window.typingStopTimeout || null;
 window.remoteTypingHideTimeout = window.remoteTypingHideTimeout || null;
 window.selectedMessageRow = window.selectedMessageRow || null;
 window.latestOffscreenIncomingMessageId = window.latestOffscreenIncomingMessageId || null;
+window.activeReactionMessageId = window.activeReactionMessageId || null;
 
 let lastTypingEmitAt = 0;
 let hasActiveTypingSignal = false;
+const REACTION_PICKER_EMOJIS = ['❤️', '😂', '😮', '😢', '👍', '🔥'];
+
+function getReactionPickerElement() {
+  return document.getElementById('reaction-picker');
+}
+
+function getReactionUserId() {
+  return getCurrentUserId();
+}
+
+function getMessageRowById(messageId) {
+  if (!messageId) return null;
+  return document.querySelector(`.msg-row[data-message-id="${messageId}"]`);
+}
+
+function parseMessageReactions(rawValue) {
+  if (!rawValue) return [];
+  try {
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function getMessageReactions(row) {
+  if (!row) return [];
+  return parseMessageReactions(row.dataset.reactions || '[]');
+}
+
+function setMessageReactions(row, reactions) {
+  if (!row) return;
+  row.dataset.reactions = JSON.stringify(Array.isArray(reactions) ? reactions : []);
+}
+
+function normalizeReactionEntries(reactions) {
+  const unique = [];
+  const seen = new Set();
+
+  (Array.isArray(reactions) ? reactions : []).forEach((entry) => {
+    const userId = entry?.user_id || entry?.userId;
+    const emoji = entry?.emoji;
+    if (!userId || !emoji) return;
+
+    const key = `${userId}::${emoji}`;
+    if (seen.has(key)) return;
+
+    seen.add(key);
+    unique.push({ user_id: userId, emoji });
+  });
+
+  return unique;
+}
+
+function getMyReactionEmoji(row, userId = getReactionUserId()) {
+  if (!row || !userId) return '';
+  const mine = getMessageReactions(row).find((entry) => entry.user_id === userId);
+  return mine?.emoji || '';
+}
+
+function renderMessageReactions(row) {
+  if (!row) return;
+
+  const bubble = row.querySelector('.bubble');
+  if (!bubble) return;
+
+  const reactions = normalizeReactionEntries(getMessageReactions(row));
+  setMessageReactions(row, reactions);
+
+  let reactionsRow = row.querySelector('.reactions-row');
+  if (!reactions.length) {
+    if (reactionsRow) reactionsRow.remove();
+    return;
+  }
+
+  if (!reactionsRow) {
+    reactionsRow = document.createElement('div');
+    reactionsRow.className = 'reactions-row';
+    bubble.after(reactionsRow);
+  }
+
+  const grouped = new Map();
+  reactions.forEach((reaction) => {
+    const users = grouped.get(reaction.emoji) || [];
+    users.push(reaction.user_id);
+    grouped.set(reaction.emoji, users);
+  });
+
+  const currentUserId = getReactionUserId();
+  reactionsRow.innerHTML = [...grouped.entries()]
+    .map(([emoji, users]) => {
+      const mineClass = users.includes(currentUserId) ? ' reaction--mine' : '';
+      return `<button type="button" class="reaction${mineClass}" data-emoji="${emoji}">${emoji} <span>${users.length}</span></button>`;
+    })
+    .join('');
+}
+
+function upsertMessageReaction(messageId, userId, emoji) {
+  const row = getMessageRowById(messageId);
+  if (!row || !userId || !emoji) return;
+
+  const reactions = normalizeReactionEntries(getMessageReactions(row));
+  const withoutUser = reactions.filter((entry) => entry.user_id !== userId);
+  withoutUser.push({ user_id: userId, emoji });
+
+  setMessageReactions(row, withoutUser);
+  renderMessageReactions(row);
+  updateReactionPickerSelectionState();
+}
+
+function removeMessageReaction(messageId, userId, emoji) {
+  const row = getMessageRowById(messageId);
+  if (!row || !userId || !emoji) return;
+
+  const reactions = normalizeReactionEntries(getMessageReactions(row));
+  const filtered = reactions.filter((entry) => !(entry.user_id === userId && entry.emoji === emoji));
+
+  setMessageReactions(row, filtered);
+  renderMessageReactions(row);
+  updateReactionPickerSelectionState();
+}
+
+function hideReactionPicker() {
+  const picker = getReactionPickerElement();
+  if (!picker) return;
+
+  picker.classList.remove('show');
+  window.activeReactionMessageId = null;
+  picker.querySelectorAll('.reaction-emoji').forEach((node) => node.classList.remove('is-selected'));
+}
+
+function updateReactionPickerSelectionState() {
+  const picker = getReactionPickerElement();
+  if (!picker || !window.activeReactionMessageId) return;
+
+  const row = getMessageRowById(window.activeReactionMessageId);
+  const selectedEmoji = getMyReactionEmoji(row);
+
+  picker.querySelectorAll('.reaction-emoji').forEach((node) => {
+    const emoji = String(node.textContent || '').trim();
+    node.classList.toggle('is-selected', Boolean(selectedEmoji) && emoji === selectedEmoji);
+  });
+}
+
+function showReactionPickerForMessageRow(row) {
+  const picker = getReactionPickerElement();
+  const messageId = row?.dataset?.messageId;
+  if (!picker || !messageId) return;
+
+  window.activeReactionMessageId = messageId;
+  picker.classList.add('show');
+  updateReactionPickerSelectionState();
+}
+
+function addReaction(emoji) {
+  const messageId = window.activeReactionMessageId;
+  if (!emoji || !messageId) {
+    hideReactionPicker();
+    return;
+  }
+
+  const row = getMessageRowById(messageId);
+  const currentUserId = getReactionUserId();
+  if (!row || !currentUserId || typeof emitSocketEvent !== 'function') {
+    hideReactionPicker();
+    return;
+  }
+
+  const existingEmoji = getMyReactionEmoji(row, currentUserId);
+  if (existingEmoji === emoji) {
+    emitSocketEvent('message:react_remove', { messageId, emoji });
+    hideReactionPicker();
+    return;
+  }
+
+  if (existingEmoji) {
+    emitSocketEvent('message:react_remove', { messageId, emoji: existingEmoji });
+  }
+
+  emitSocketEvent('message:react', { messageId, emoji });
+  hideReactionPicker();
+}
+
+function handleMessageReactionAdded(payload) {
+  upsertMessageReaction(payload?.messageId, payload?.userId, payload?.emoji);
+}
+
+function handleMessageReactionRemoved(payload) {
+  removeMessageReaction(payload?.messageId, payload?.userId, payload?.emoji);
+}
 
 function emitTypingStart() {
   const canEmit = window.appSocket && window.appSocket.connected && window.activeConversationId;
@@ -613,6 +804,11 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
     recomputeOutgoingStatusVisibility();
   }
 
+  if (Array.isArray(meta.reactions) && meta.reactions.length) {
+    setMessageReactions(row, normalizeReactionEntries(meta.reactions));
+    renderMessageReactions(row);
+  }
+
   return row;
 }
 
@@ -702,6 +898,7 @@ function renderConversationMessages(messages) {
         contentType: message.content_type,
         mediaUrl: message.mediaUrl || message.content,
         fileName: message.file_name,
+        reactions: message.reactions,
         deliveryStatus: isMe ? (seenByOther ? 'Seen' : initialDeliveryStatus || 'Delivered') : null
       }
     );
@@ -912,6 +1109,12 @@ window.renderConversationMessages = renderConversationMessages;
 window.renderConversationLoadingState = renderConversationLoadingState;
 window.addMessage = addMessage;
 window.jumpToLatestIncomingMessage = jumpToLatestIncomingMessage;
+window.showReactionPickerForMessageRow = showReactionPickerForMessageRow;
+window.hideReactionPicker = hideReactionPicker;
+window.updateReactionPickerSelectionState = updateReactionPickerSelectionState;
+window.addReaction = addReaction;
+window.handleMessageReactionAdded = handleMessageReactionAdded;
+window.handleMessageReactionRemoved = handleMessageReactionRemoved;
 
 document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('messages-container');

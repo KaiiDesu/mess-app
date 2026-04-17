@@ -7,24 +7,6 @@ function showToast() {
   }
 }
 
-function addReaction(emoji) {
-  const picker = document.getElementById('reaction-picker');
-  picker.classList.remove('show');
-  const lastMsg = document.querySelector('#messages-container .msg-row:last-child');
-  if (lastMsg) {
-    let reactions = lastMsg.querySelector('.reactions-row');
-    if (!reactions) {
-      reactions = document.createElement('div');
-      reactions.className = 'reactions-row';
-      lastMsg.querySelector('.bubble')?.after(reactions);
-    }
-    const r = document.createElement('div');
-    r.className = 'reaction';
-    r.innerHTML = `${emoji} <span>1</span>`;
-    reactions.appendChild(r);
-  }
-}
-
 let pressTimer;
 let lastMessagesScrollTop = 0;
 let isUserScrollingMessages = false;
@@ -53,11 +35,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const msgInput = document.getElementById('msg-input');
   const sendBtn = document.getElementById('send-btn');
 
+  const beginReactionPickerPress = (event) => {
+    const bubble = event.target.closest('.bubble');
+    const row = bubble?.closest('.msg-row[data-message-id]');
+    if (!row) return;
+
+    pressTimer = setTimeout(() => {
+      if (typeof window.showReactionPickerForMessageRow === 'function') {
+        window.showReactionPickerForMessageRow(row);
+      }
+    }, 500);
+  };
+
   messagesContainer.addEventListener('touchstart', e => {
     markUserScrollIntent();
-    if (e.target.closest('.bubble')) {
-      pressTimer = setTimeout(() => document.getElementById('reaction-picker').classList.add('show'), 500);
-    }
+    beginReactionPickerPress(e);
   });
   messagesContainer.addEventListener('touchmove', () => markUserScrollIntent(), { passive: true });
   messagesContainer.addEventListener('touchend', () => {
@@ -67,9 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   messagesContainer.addEventListener('mousedown', e => {
     markUserScrollIntent();
-    if (e.target.closest('.bubble')) {
-      pressTimer = setTimeout(() => document.getElementById('reaction-picker').classList.add('show'), 500);
-    }
+    beginReactionPickerPress(e);
   });
   messagesContainer.addEventListener('mousemove', () => markUserScrollIntent());
   messagesContainer.addEventListener('mouseup', () => {
@@ -126,7 +116,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.addEventListener('click', e => {
   if (!e.target.closest('.reaction-picker') && !e.target.closest('.bubble')) {
-    document.getElementById('reaction-picker').classList.remove('show');
+    if (typeof window.hideReactionPicker === 'function') {
+      window.hideReactionPicker();
+    } else {
+      document.getElementById('reaction-picker').classList.remove('show');
+    }
   }
 
   if (currentView === 'view-chat') {

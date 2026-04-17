@@ -278,6 +278,13 @@ const handleReactRemove = async (socket, data, userId) => {
       userId,
       emoji
     });
+
+    socket.emit('message:reaction_removed', {
+      messageId,
+      conversationId: message.conversation_id,
+      userId,
+      emoji
+    });
   } catch (err) {
     logger.error('Error in handleReactRemove', { error: err.message });
   }
