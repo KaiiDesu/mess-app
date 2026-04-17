@@ -24,24 +24,56 @@ function addReaction(emoji) {
 
 let pressTimer;
 let lastMessagesScrollTop = 0;
+let isUserScrollingMessages = false;
+let userScrollIntentResetTimer = null;
+
+function markUserScrollIntent() {
+  isUserScrollingMessages = true;
+  if (userScrollIntentResetTimer) {
+    clearTimeout(userScrollIntentResetTimer);
+  }
+  userScrollIntentResetTimer = setTimeout(() => {
+    isUserScrollingMessages = false;
+  }, 180);
+}
+
+function clearUserScrollIntent() {
+  isUserScrollingMessages = false;
+  if (userScrollIntentResetTimer) {
+    clearTimeout(userScrollIntentResetTimer);
+    userScrollIntentResetTimer = null;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const messagesContainer = document.getElementById('messages-container');
   const msgInput = document.getElementById('msg-input');
   const sendBtn = document.getElementById('send-btn');
 
   messagesContainer.addEventListener('touchstart', e => {
+    markUserScrollIntent();
     if (e.target.closest('.bubble')) {
       pressTimer = setTimeout(() => document.getElementById('reaction-picker').classList.add('show'), 500);
     }
   });
-  messagesContainer.addEventListener('touchend', () => clearTimeout(pressTimer));
+  messagesContainer.addEventListener('touchmove', () => markUserScrollIntent(), { passive: true });
+  messagesContainer.addEventListener('touchend', () => {
+    clearTimeout(pressTimer);
+    clearUserScrollIntent();
+  });
 
   messagesContainer.addEventListener('mousedown', e => {
+    markUserScrollIntent();
     if (e.target.closest('.bubble')) {
       pressTimer = setTimeout(() => document.getElementById('reaction-picker').classList.add('show'), 500);
     }
   });
-  messagesContainer.addEventListener('mouseup', () => clearTimeout(pressTimer));
+  messagesContainer.addEventListener('mousemove', () => markUserScrollIntent());
+  messagesContainer.addEventListener('mouseup', () => {
+    clearTimeout(pressTimer);
+    clearUserScrollIntent();
+  });
+  messagesContainer.addEventListener('wheel', () => markUserScrollIntent(), { passive: true });
 
   if (sendBtn && msgInput) {
     // Prevent pointer down on send button from blurring the textarea on mobile.
@@ -57,7 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const currentTop = messagesContainer.scrollTop;
       const scrolledUp = currentTop < lastMessagesScrollTop - 12;
 
-      if (scrolledUp && document.activeElement === msgInput) {
+      // Only dismiss keyboard for user-driven upward scroll gestures.
+      if (scrolledUp && isUserScrollingMessages && document.activeElement === msgInput) {
         msgInput.blur();
       }
 

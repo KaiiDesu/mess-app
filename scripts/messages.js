@@ -497,7 +497,11 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
     const wvId = row.querySelector('.voice-waveform')?.id;
     if (wvId) buildWaveform(wvId, 24);
   }
-  container.scrollTop = container.scrollHeight;
+  if (typeof scrollMessagesToBottom === 'function') {
+    scrollMessagesToBottom(false);
+  } else {
+    container.scrollTop = container.scrollHeight;
+  }
 
   if (isMe) {
     recomputeOutgoingStatusVisibility();
