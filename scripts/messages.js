@@ -5,6 +5,7 @@ window.selectedMessageRow = window.selectedMessageRow || null;
 window.latestOffscreenIncomingMessageId = window.latestOffscreenIncomingMessageId || null;
 window.activeReactionMessageId = window.activeReactionMessageId || null;
 window.pendingIncomingMessagesDuringLoad = window.pendingIncomingMessagesDuringLoad || [];
+window.pendingSeenMessageIds = window.pendingSeenMessageIds || new Set();
 
 let lastTypingEmitAt = 0;
 let hasActiveTypingSignal = false;
@@ -475,10 +476,42 @@ function setVideoPendingIndicator(row, isPending) {
   videoBubble.classList.toggle('is-pending', Boolean(isPending));
 }
 
+function getDeliveryStatusRank(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'sending') return 1;
+  if (normalized === 'sent') return 2;
+  if (normalized === 'delivered') return 3;
+  if (normalized === 'seen') return 4;
+  return 0;
+}
+
+function shouldUpgradeDeliveryStatus(currentStatus, nextStatus) {
+  return getDeliveryStatusRank(nextStatus) >= getDeliveryStatusRank(currentStatus);
+}
+
+function maybeApplyPendingSeenForRow(row) {
+  if (!row) return;
+
+  const messageId = row.dataset.messageId;
+  if (!messageId) return;
+
+  const pending = window.pendingSeenMessageIds;
+  if (!pending || !pending.has(messageId)) return;
+
+  pending.delete(messageId);
+  setMessageRowDeliveryStatus(row, 'Seen');
+}
+
 function setMessageRowDeliveryStatus(row, status) {
   if (!row || !status) return;
   const statusNode = row.querySelector('.msg-delivery-status');
   if (!statusNode) return;
+
+  const currentStatus = row.dataset.deliveryStatus || statusNode.textContent || '';
+  if (!shouldUpgradeDeliveryStatus(currentStatus, status)) {
+    return;
+  }
+
   row.dataset.deliveryStatus = status;
 
   if (row.dataset.videoPending === '1' && status !== 'Sending' && status !== 'Sent') {
@@ -621,6 +654,7 @@ function updateMessageDeliveryStatusByClientId(clientMessageId, status, messageI
 
   if (messageId) {
     row.dataset.messageId = messageId;
+    maybeApplyPendingSeenForRow(row);
   }
   if (deliveredAt) {
     row.dataset.deliveredAt = deliveredAt;
@@ -860,6 +894,10 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
   if (Array.isArray(meta.reactions) && meta.reactions.length) {
     setMessageReactions(row, normalizeReactionEntries(meta.reactions));
     renderMessageReactions(row);
+  }
+
+  if (isMe && meta.messageId) {
+    maybeApplyPendingSeenForRow(row);
   }
 
   enforceStrictMessageOrder();
@@ -1147,7 +1185,15 @@ async function handleIncomingSocketMessage(payload) {
 function handleMessageReadReceipt(payload) {
   const messageIds = Array.isArray(payload?.messageIds) ? payload.messageIds : [];
   messageIds.forEach((messageId) => {
-    updateMessageDeliveryStatusByMessageId(messageId, 'Seen');
+    const row = document.querySelector(`.msg-row.me[data-message-id="${messageId}"]`);
+    if (row) {
+      updateMessageDeliveryStatusByMessageId(messageId, 'Seen');
+      return;
+    }
+
+    if (messageId) {
+      window.pendingSeenMessageIds.add(messageId);
+    }
   });
 
   recomputeOutgoingStatusVisibility();
