@@ -253,6 +253,7 @@ const getMessages = async (req, res) => {
       )
       .eq('conversation_id', id)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(Math.min(limit, 100))
       .range(offset, offset + Math.min(limit, 100) - 1);
 

@@ -489,6 +489,54 @@ function setMessageRowDeliveryStatus(row, status) {
   recomputeOutgoingStatusVisibility();
 }
 
+function getMessageRowTimestamp(row) {
+  if (!row) return 0;
+  const raw = row.dataset.deliveredAt || row.dataset.createdAt || '';
+  const millis = Date.parse(raw);
+  return Number.isFinite(millis) ? millis : 0;
+}
+
+function getMessageRowStableId(row) {
+  if (!row) return '';
+  return row.dataset.messageId || row.dataset.clientMessageId || '';
+}
+
+function compareMessageRowsChronologically(a, b) {
+  const byTime = getMessageRowTimestamp(a) - getMessageRowTimestamp(b);
+  if (byTime !== 0) {
+    return byTime;
+  }
+
+  const aId = getMessageRowStableId(a);
+  const bId = getMessageRowStableId(b);
+  if (aId && bId) {
+    return aId.localeCompare(bId);
+  }
+
+  return 0;
+}
+
+function enforceStrictMessageOrder() {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+
+  const typingRow = document.getElementById('remote-typing-row');
+  const rows = [...container.querySelectorAll('.msg-row')].filter((row) => row !== typingRow);
+  if (rows.length < 2) return;
+
+  rows.sort(compareMessageRowsChronologically);
+  rows.forEach((row) => {
+    container.appendChild(row);
+  });
+
+  if (typingRow) {
+    container.appendChild(typingRow);
+  }
+
+  recomputeOutgoingStatusVisibility();
+  refreshIncomingMessageJumpPillVisibility();
+}
+
 function clearSelectedMessageState() {
   if (window.selectedMessageRow) {
     window.selectedMessageRow.classList.remove('message-dimmed');
@@ -579,6 +627,7 @@ function updateMessageDeliveryStatusByClientId(clientMessageId, status, messageI
   }
 
   setMessageRowDeliveryStatus(row, status);
+  enforceStrictMessageOrder();
 
   if ((status === 'Delivered' || status === 'Seen') && typeof window.removePendingMediaEntry === 'function') {
     window.removePendingMediaEntry(clientMessageId);
@@ -813,6 +862,8 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
     renderMessageReactions(row);
   }
 
+  enforceStrictMessageOrder();
+
   return row;
 }
 
@@ -936,7 +987,11 @@ function renderConversationMessages(messages) {
 
   const currentUserId = getCurrentUserId();
   const otherUserId = getActiveOtherUserId();
-  const ordered = [...messages].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const ordered = [...messages].sort((a, b) => {
+    const timeDiff = new Date(a.created_at) - new Date(b.created_at);
+    if (timeDiff !== 0) return timeDiff;
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
 
   ordered.forEach((message) => {
     const senderId = message.sender_id || message.sender?.id;
