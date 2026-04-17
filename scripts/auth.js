@@ -142,7 +142,9 @@ async function hydrateProfileHeader() {
 }
 
 async function registerAccount() {
-  if (typeof window.ensureSystemNotificationPermission === 'function') {
+  if (typeof window.ensureSystemNotificationPermissionWithFeedback === 'function') {
+    window.ensureSystemNotificationPermissionWithFeedback();
+  } else if (typeof window.ensureSystemNotificationPermission === 'function') {
     window.ensureSystemNotificationPermission();
   }
 
@@ -190,7 +192,9 @@ async function registerAccount() {
 }
 
 async function loginAccount() {
-  if (typeof window.ensureSystemNotificationPermission === 'function') {
+  if (typeof window.ensureSystemNotificationPermissionWithFeedback === 'function') {
+    window.ensureSystemNotificationPermissionWithFeedback();
+  } else if (typeof window.ensureSystemNotificationPermission === 'function') {
     window.ensureSystemNotificationPermission();
   }
 

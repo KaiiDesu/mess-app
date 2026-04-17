@@ -32,8 +32,20 @@ function hideInAppNotificationToast() {
   toast.classList.remove('show');
 }
 
+function ensureToastElement() {
+  let toast = document.getElementById('toast');
+  if (toast) return toast;
+
+  toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.id = 'toast';
+  toast.innerHTML = '<div class="toast-av"></div><div class="toast-info"><div class="toast-name"></div><div class="toast-msg"></div></div>';
+  document.body.appendChild(toast);
+  return toast;
+}
+
 function showInAppNotificationToast(options) {
-  const toast = document.getElementById('toast');
+  const toast = ensureToastElement();
   if (!toast) return;
 
   const nameEl = toast.querySelector('.toast-name');
@@ -169,4 +181,25 @@ window.installNotificationPermissionNudge = installNotificationPermissionNudge;
 
 document.addEventListener('DOMContentLoaded', () => {
   installNotificationPermissionNudge();
+  // Smoke-test the in-app notification surface once after boot.
+  setTimeout(() => {
+    showInAppNotificationToast({ senderName: 'Zap', messageText: 'Notifications ready' });
+  }, 500);
 });
+
+window.ensureSystemNotificationPermissionWithFeedback = async () => {
+  const result = await ensureSystemNotificationPermission();
+  if (result === 'unsupported') {
+    showInAppNotificationToast({
+      senderName: 'Zap',
+      messageText: 'System notification prompt is not supported in this app build.'
+    });
+  }
+  if (result === 'denied') {
+    showInAppNotificationToast({
+      senderName: 'Zap',
+      messageText: 'Notification permission denied. You can enable it in app settings.'
+    });
+  }
+  return result;
+};
