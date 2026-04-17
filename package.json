@@ -1,0 +1,26 @@
+{
+  "name": "mess-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "start": "node index.js",
+    "mobile:prepare": "node scripts/prepare-mobile-assets.js",
+    "mobile:add:android": "npm run mobile:prepare && npx cap add android",
+    "mobile:sync": "npm run mobile:prepare && npx cap sync android",
+    "mobile:android": "npm run mobile:sync && npx cap open android",
+    "mobile:apk:debug": "npm run mobile:sync && cd android && gradlew.bat assembleDebug"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.8"
+  }
+}

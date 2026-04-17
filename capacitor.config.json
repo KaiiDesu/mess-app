@@ -1,0 +1,6 @@
+{
+  "appId": "com.zapmessenger.app",
+  "appName": "Zap Messenger",
+  "webDir": "mobile-web",
+  "bundledWebRuntime": false
+}

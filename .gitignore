@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Environment variables
+.env
+*.env
+server/.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build outputs / generated
+mobile-web/
+dist/
+build/
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/build/
+
+# Capacitor
+android/capacitor-cordova-android-plugins/build/
+
+# Testing
+coverage/
