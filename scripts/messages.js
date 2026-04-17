@@ -28,7 +28,9 @@ function emitTypingStop() {
 
 function getCurrentUserId() {
   try {
-    const user = JSON.parse(localStorage.getItem('zap_user') || '{}');
+    const user =
+      (typeof window.getStoredSessionUser === 'function' && window.getStoredSessionUser()) ||
+      JSON.parse(localStorage.getItem('zap_user') || sessionStorage.getItem('zap_user') || '{}');
     return user.id || null;
   } catch (_) {
     return null;
@@ -111,7 +113,16 @@ function getApiBaseUrlForMessages() {
 }
 
 function getAuthTokenForMessages() {
-  return localStorage.getItem('zap_jwt') || localStorage.getItem('token') || '';
+  if (typeof window.getStoredAuthToken === 'function') {
+    return window.getStoredAuthToken();
+  }
+  return (
+    localStorage.getItem('zap_jwt') ||
+    sessionStorage.getItem('zap_jwt') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('token') ||
+    ''
+  );
 }
 
 async function fetchMediaUrlById(mediaId) {

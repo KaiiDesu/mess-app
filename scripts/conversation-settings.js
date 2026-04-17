@@ -3,7 +3,16 @@ function getSettingsApiBaseUrl() {
 }
 
 function getSettingsAuthToken() {
-  return localStorage.getItem('zap_jwt') || localStorage.getItem('token') || '';
+  if (typeof window.getStoredAuthToken === 'function') {
+    return window.getStoredAuthToken();
+  }
+  return (
+    localStorage.getItem('zap_jwt') ||
+    sessionStorage.getItem('zap_jwt') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('token') ||
+    ''
+  );
 }
 
 function getActiveConversationFromState() {

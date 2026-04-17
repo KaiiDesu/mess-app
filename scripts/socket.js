@@ -1,5 +1,14 @@
 function getSocketToken() {
-  return localStorage.getItem('zap_jwt') || localStorage.getItem('token') || '';
+  if (typeof window.getStoredAuthToken === 'function') {
+    return window.getStoredAuthToken();
+  }
+  return (
+    localStorage.getItem('zap_jwt') ||
+    sessionStorage.getItem('zap_jwt') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('token') ||
+    ''
+  );
 }
 
 function getApiBaseUrl() {
@@ -8,7 +17,9 @@ function getApiBaseUrl() {
 
 function getCurrentSessionUserId() {
   try {
-    const user = JSON.parse(localStorage.getItem('zap_user') || '{}');
+    const user =
+      (typeof window.getStoredSessionUser === 'function' && window.getStoredSessionUser()) ||
+      JSON.parse(localStorage.getItem('zap_user') || sessionStorage.getItem('zap_user') || '{}');
     return user.id || null;
   } catch (_) {
     return null;
@@ -475,7 +486,6 @@ function initSocket() {
 }
 
 function connectSocketWithToken(token) {
-  localStorage.setItem('zap_jwt', token);
   if (window.appSocket) {
     window.appSocket.disconnect();
   }

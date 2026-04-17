@@ -7,7 +7,10 @@ function getApiBaseUrlFromWindow() {
 }
 
 function getAuthToken() {
-  return localStorage.getItem('zap_jwt') || '';
+  if (typeof window.getStoredAuthToken === 'function') {
+    return window.getStoredAuthToken();
+  }
+  return localStorage.getItem('zap_jwt') || sessionStorage.getItem('zap_jwt') || '';
 }
 
 function escapeHtml(value) {

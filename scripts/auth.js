@@ -2,6 +2,55 @@ function getApiBaseUrl() {
   return window.ZAP_API_URL || 'http://localhost:3000';
 }
 
+function getStoredAuthToken() {
+  return (
+    localStorage.getItem('zap_jwt') ||
+    sessionStorage.getItem('zap_jwt') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('token') ||
+    ''
+  );
+}
+
+function getStoredSessionUser() {
+  const raw = localStorage.getItem('zap_user') || sessionStorage.getItem('zap_user') || 'null';
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveAuthSession(token, user, rememberMe) {
+  if (!token) return;
+
+  const userJson = JSON.stringify(user || {});
+
+  localStorage.removeItem('zap_jwt');
+  localStorage.removeItem('zap_user');
+  sessionStorage.removeItem('zap_jwt');
+  sessionStorage.removeItem('zap_user');
+
+  const storage = rememberMe ? localStorage : sessionStorage;
+  storage.setItem('zap_jwt', token);
+  storage.setItem('zap_user', userJson);
+
+  localStorage.setItem('zap_remember_me', rememberMe ? '1' : '0');
+}
+
+function clearAuthSession() {
+  localStorage.removeItem('zap_jwt');
+  localStorage.removeItem('zap_user');
+  localStorage.removeItem('token');
+  sessionStorage.removeItem('zap_jwt');
+  sessionStorage.removeItem('zap_user');
+  sessionStorage.removeItem('token');
+}
+
+function readRememberPreference() {
+  return localStorage.getItem('zap_remember_me') !== '0';
+}
+
 function getAuthValue(id) {
   const element = document.getElementById(id);
   return element ? element.value.trim() : '';
@@ -62,7 +111,7 @@ async function hydrateProfileHeader() {
   const user = getCurrentSessionUser();
   applyProfileHeaderFromUser(user || {});
 
-  const token = localStorage.getItem('zap_jwt') || localStorage.getItem('token') || '';
+  const token = getStoredAuthToken();
   if (!token) return;
 
   try {
@@ -84,7 +133,8 @@ async function hydrateProfileHeader() {
       avatarUrl: payload.avatar_url || user?.avatarUrl
     };
 
-    localStorage.setItem('zap_user', JSON.stringify(mergedUser));
+    const rememberMe = readRememberPreference();
+    saveAuthSession(token, mergedUser, rememberMe);
     applyProfileHeaderFromUser(mergedUser);
   } catch (_) {
     // Keep local header data when network fetch fails.
@@ -122,8 +172,7 @@ async function registerAccount() {
     return;
   }
 
-  localStorage.setItem('zap_jwt', payload.token);
-  localStorage.setItem('zap_user', JSON.stringify(payload.user));
+  saveAuthSession(payload.token, payload.user, true);
 
   if (typeof connectSocketWithToken === 'function') {
     connectSocketWithToken(payload.token);
@@ -139,6 +188,7 @@ async function registerAccount() {
 async function loginAccount() {
   const email = getAuthValue('login-email');
   const password = getAuthValue('login-pass');
+  const rememberMe = Boolean(document.getElementById('login-remember')?.checked);
 
   if (!email || !password) {
     setAuthError('Email and password are required.');
@@ -158,8 +208,7 @@ async function loginAccount() {
     return;
   }
 
-  localStorage.setItem('zap_jwt', payload.token);
-  localStorage.setItem('zap_user', JSON.stringify(payload.user));
+  saveAuthSession(payload.token, payload.user, rememberMe);
 
   if (typeof connectSocketWithToken === 'function') {
     connectSocketWithToken(payload.token);
@@ -176,16 +225,11 @@ window.registerAccount = registerAccount;
 window.loginAccount = loginAccount;
 
 function getCurrentSessionUser() {
-  try {
-    return JSON.parse(localStorage.getItem('zap_user') || 'null');
-  } catch (_) {
-    return null;
-  }
+  return getStoredSessionUser();
 }
 
 function signOut() {
-  localStorage.removeItem('zap_jwt');
-  localStorage.removeItem('zap_user');
+  clearAuthSession();
 
   if (window.appSocket) {
     window.appSocket.disconnect();
@@ -197,3 +241,22 @@ function signOut() {
 window.getCurrentSessionUser = getCurrentSessionUser;
 window.signOut = signOut;
 window.hydrateProfileHeader = hydrateProfileHeader;
+window.getStoredAuthToken = getStoredAuthToken;
+window.saveAuthSession = saveAuthSession;
+window.getStoredSessionUser = getStoredSessionUser;
+window.clearAuthSession = clearAuthSession;
+window.readRememberPreference = readRememberPreference;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const rememberToggle = document.getElementById('login-remember');
+  if (rememberToggle) {
+    rememberToggle.checked = readRememberPreference();
+  }
+
+  // Auto-restore remembered login when app restarts on this device.
+  const token = getStoredAuthToken();
+  const user = getStoredSessionUser();
+  if (token && user && currentView === 'view-login') {
+    navigate('view-home');
+  }
+});

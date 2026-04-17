@@ -54,6 +54,8 @@
   .btn-ghost:active { background:var(--bg3); }
   .auth-switch { text-align:center; font-size:13px; color:var(--text3); margin-top:8px; }
   .auth-switch span { color:var(--accent2); cursor:pointer; font-weight:600; }
+  .remember-row { display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text2); user-select:none; }
+  .remember-check { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
   .divider { display:flex; align-items:center; gap:12px; color:var(--text3); font-size:12px; }
   .divider::before,.divider::after { content:''; flex:1; height:1px; background:var(--border2); }
 

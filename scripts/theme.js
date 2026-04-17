@@ -53,7 +53,13 @@ function selectTheme(el, name, gradient) {
 }
 
 async function applyConversationTheme() {
-  const token = localStorage.getItem('zap_jwt') || localStorage.getItem('token') || '';
+  const token =
+    (typeof window.getStoredAuthToken === 'function' && window.getStoredAuthToken()) ||
+    localStorage.getItem('zap_jwt') ||
+    sessionStorage.getItem('zap_jwt') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('token') ||
+    '';
   const conversationId = window.activeConversationId;
 
   if (!conversationId) {

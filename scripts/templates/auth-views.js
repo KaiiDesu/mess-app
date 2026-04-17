@@ -17,6 +17,10 @@ window.ZapTemplateParts.authViews = String.raw`
             <div class="input-label">Password</div>
             <input class="inp" type="password" placeholder="••••••••" id="login-pass">
           </div>
+          <label class="remember-row" for="login-remember">
+            <input class="remember-check" type="checkbox" id="login-remember" checked>
+            <span>Remember me on this device</span>
+          </label>
           <button class="btn-primary" onclick="loginAccount()">Sign in</button>
           <div class="divider">or continue with</div>
           <button class="btn-ghost" onclick="navigate('view-home')">🍎  Sign in with Apple</button>
