@@ -177,15 +177,18 @@ function addReaction(emoji) {
 
   const existingEmoji = getMyReactionEmoji(row, currentUserId);
   if (existingEmoji === emoji) {
+    removeMessageReaction(messageId, currentUserId, emoji);
     emitSocketEvent('message:react_remove', { messageId, emoji });
     hideReactionPicker();
     return;
   }
 
   if (existingEmoji) {
+    removeMessageReaction(messageId, currentUserId, existingEmoji);
     emitSocketEvent('message:react_remove', { messageId, emoji: existingEmoji });
   }
 
+  upsertMessageReaction(messageId, currentUserId, emoji);
   emitSocketEvent('message:react', { messageId, emoji });
   hideReactionPicker();
 }
