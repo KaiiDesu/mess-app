@@ -4,6 +4,7 @@ window.remoteTypingHideTimeout = window.remoteTypingHideTimeout || null;
 window.selectedMessageRow = window.selectedMessageRow || null;
 window.latestOffscreenIncomingMessageId = window.latestOffscreenIncomingMessageId || null;
 window.activeReactionMessageId = window.activeReactionMessageId || null;
+window.pendingIncomingMessagesDuringLoad = window.pendingIncomingMessagesDuringLoad || [];
 
 let lastTypingEmitAt = 0;
 let hasActiveTypingSignal = false;
@@ -847,6 +848,60 @@ function renderConversationLoadingState() {
   container.appendChild(loading);
 }
 
+function queueIncomingMessageDuringLoad(payload) {
+  if (!payload) return;
+
+  const messageId = payload.id;
+  const conversationId = payload.conversation_id || payload.conversationId;
+  if (!conversationId) return;
+
+  const queue = Array.isArray(window.pendingIncomingMessagesDuringLoad)
+    ? window.pendingIncomingMessagesDuringLoad
+    : [];
+
+  const alreadyQueued = queue.some((item) => {
+    if (messageId && item?.id) {
+      return item.id === messageId;
+    }
+    return item?.conversation_id === conversationId && item?.clientMessageId === payload?.clientMessageId;
+  });
+
+  if (!alreadyQueued) {
+    queue.push(payload);
+  }
+
+  window.pendingIncomingMessagesDuringLoad = queue;
+}
+
+async function flushQueuedIncomingMessagesForConversation(conversationId) {
+  if (!conversationId) return;
+
+  const queue = Array.isArray(window.pendingIncomingMessagesDuringLoad)
+    ? window.pendingIncomingMessagesDuringLoad
+    : [];
+
+  if (!queue.length) return;
+
+  const keep = [];
+  const toFlush = [];
+
+  queue.forEach((payload) => {
+    const payloadConversationId = payload?.conversation_id || payload?.conversationId;
+    if (payloadConversationId === conversationId) {
+      toFlush.push(payload);
+    } else {
+      keep.push(payload);
+    }
+  });
+
+  window.pendingIncomingMessagesDuringLoad = keep;
+
+  for (const payload of toFlush) {
+    // eslint-disable-next-line no-await-in-loop
+    await handleIncomingSocketMessage(payload);
+  }
+}
+
 function renderConversationMessages(messages) {
   const container = document.getElementById('messages-container');
   if (!container) return;
@@ -946,8 +1001,18 @@ async function handleIncomingSocketMessage(payload) {
 
   const currentUserId = getCurrentUserId();
   const messageConversationId = payload.conversation_id || payload.conversationId;
+  const activeLoadingConversationId = window.__zapConversationMessagesLoadingId || null;
 
   if (window.activeConversationId && messageConversationId && window.activeConversationId !== messageConversationId) {
+    return;
+  }
+
+  if (
+    messageConversationId &&
+    activeLoadingConversationId &&
+    messageConversationId === activeLoadingConversationId
+  ) {
+    queueIncomingMessageDuringLoad(payload);
     return;
   }
 
@@ -983,6 +1048,13 @@ async function handleIncomingSocketMessage(payload) {
   if (isMe && payload.id) {
     const existingOwnRow = document.querySelector(`.msg-row.me[data-message-id="${payload.id}"]`);
     if (existingOwnRow) {
+      return;
+    }
+  }
+
+  if (payload.id) {
+    const existingRow = document.querySelector(`.msg-row[data-message-id="${payload.id}"]`);
+    if (existingRow) {
       return;
     }
   }
@@ -1118,6 +1190,7 @@ window.updateReactionPickerSelectionState = updateReactionPickerSelectionState;
 window.addReaction = addReaction;
 window.handleMessageReactionAdded = handleMessageReactionAdded;
 window.handleMessageReactionRemoved = handleMessageReactionRemoved;
+window.flushQueuedIncomingMessagesForConversation = flushQueuedIncomingMessagesForConversation;
 
 document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('messages-container');

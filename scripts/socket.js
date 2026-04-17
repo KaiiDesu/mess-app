@@ -560,6 +560,7 @@ async function openConversationById(conversationId) {
   joinConversation(conversationId);
 
   if (typeof window.renderConversationLoadingState === 'function') {
+    window.__zapConversationMessagesLoadingId = conversationId;
     window.renderConversationLoadingState();
   }
 
@@ -583,6 +584,14 @@ async function openConversationById(conversationId) {
       window.renderConversationMessages([]);
     }
     console.warn('[chat] failed loading messages:', error?.message || error);
+  } finally {
+    if (window.__zapConversationMessagesLoadingId === conversationId) {
+      window.__zapConversationMessagesLoadingId = null;
+    }
+
+    if (typeof window.flushQueuedIncomingMessagesForConversation === 'function') {
+      window.flushQueuedIncomingMessagesForConversation(conversationId);
+    }
   }
 }
 
