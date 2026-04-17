@@ -292,6 +292,19 @@
   .enc-badge svg { width:12px; height:12px; stroke:var(--green); fill:none; stroke-width:2.5; flex-shrink:0; }
   .enc-badge span { font-size:10.5px; color:var(--green); font-weight:600; }
 
+  /* MESSAGE TEXT SELECTION GUARD */
+  .messages,
+  .msg-row,
+  .bubble,
+  .reactions-row,
+  .reaction-picker,
+  .reaction-emoji,
+  .reaction {
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+  }
+
   /* REACTIONS */
   .reactions-row { display:flex; gap:4px; margin-top:4px; }
   .reaction { background:var(--bg3); border:1px solid var(--border2); border-radius:20px; padding:2px 7px; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:3px; }

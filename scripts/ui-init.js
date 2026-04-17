@@ -66,6 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(pressTimer);
     clearUserScrollIntent();
   });
+  messagesContainer.addEventListener('contextmenu', (event) => {
+    if (event.target.closest('.bubble, .reaction-picker, .reaction, .reaction-emoji')) {
+      event.preventDefault();
+    }
+  });
   messagesContainer.addEventListener('wheel', () => markUserScrollIntent(), { passive: true });
 
   if (sendBtn && msgInput) {
