@@ -134,13 +134,18 @@ function jumpToLatestIncomingMessage() {
   const messageId = window.latestOffscreenIncomingMessageId;
   if (!messageId) return;
 
+  const container = document.getElementById('messages-container');
   const row = document.querySelector(`.msg-row[data-message-id="${messageId}"]`);
-  if (!row) {
+  if (!container || !row) {
     hideIncomingMessageJumpPill();
     return;
   }
 
-  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const targetTop = row.offsetTop - container.clientHeight * 0.35;
+  container.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: 'smooth'
+  });
 
   requestAnimationFrame(() => {
     refreshIncomingMessageJumpPillVisibility();
