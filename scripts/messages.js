@@ -71,6 +71,18 @@ function scrollMessagesToBottom(force = false) {
   }
 }
 
+function forceScrollToLatestAfterOwnSend() {
+  const snap = () => {
+    if (typeof scrollMessagesToBottom === 'function') {
+      scrollMessagesToBottom(true);
+    }
+  };
+
+  snap();
+  requestAnimationFrame(snap);
+  setTimeout(snap, 90);
+}
+
 function keepConversationPinnedToBottomDuringMediaLoad(container) {
   if (!container) return;
 
@@ -413,6 +425,8 @@ function sendMessage() {
     }
   }
 
+  forceScrollToLatestAfterOwnSend();
+
   input.value = '';
   input.style.height = 'auto';
   document.getElementById('send-btn').style.display = 'none';
@@ -634,6 +648,7 @@ async function handleIncomingSocketMessage(payload) {
       payload.id,
       payload.created_at || new Date().toISOString()
     );
+    forceScrollToLatestAfterOwnSend();
     return;
   }
 
@@ -650,6 +665,7 @@ async function handleIncomingSocketMessage(payload) {
   if (isMe && payload.id) {
     const existingOwnRow = document.querySelector(`.msg-row.me[data-message-id="${payload.id}"]`);
     if (existingOwnRow) {
+      forceScrollToLatestAfterOwnSend();
       return;
     }
   }
