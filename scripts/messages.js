@@ -603,8 +603,18 @@ function clearRenderedMessages() {
   const container = document.getElementById('messages-container');
   if (!container) return;
 
-  container.querySelectorAll('.msg-row, .msg-date, #chat-empty-state').forEach((node) => node.remove());
+  container
+    .querySelectorAll('.msg-row, .msg-date, #chat-empty-state, .enc-badge, .conversation-loading-wrap')
+    .forEach((node) => node.remove());
   hideIncomingMessageJumpPill();
+}
+
+function createEncryptionBadgeElement() {
+  const badge = document.createElement('div');
+  badge.className = 'enc-badge';
+  badge.innerHTML =
+    '<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg><span>Messages are end-to-end encrypted</span>';
+  return badge;
 }
 
 function renderConversationLoadingState() {
@@ -613,10 +623,7 @@ function renderConversationLoadingState() {
 
   clearRenderedMessages();
 
-  const badge = document.createElement('div');
-  badge.className = 'enc-badge';
-  badge.innerHTML = '<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg><span>Messages are end-to-end encrypted</span>';
-  container.appendChild(badge);
+  container.appendChild(createEncryptionBadgeElement());
 
   const loading = document.createElement('div');
   loading.className = 'conversation-loading-wrap';
@@ -629,6 +636,7 @@ function renderConversationMessages(messages) {
   if (!container) return;
 
   clearRenderedMessages();
+  container.appendChild(createEncryptionBadgeElement());
 
   const activeConversationId = window.activeConversationId;
 
