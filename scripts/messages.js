@@ -80,6 +80,23 @@ function scrollOwnMessageRowIntoView(row) {
   container.scrollTo({ top: targetTop, behavior: 'smooth' });
 }
 
+function getDistanceFromBottom(container) {
+  if (!container) return Number.POSITIVE_INFINITY;
+  return container.scrollHeight - container.scrollTop - container.clientHeight;
+}
+
+function isNearBottomForIncomingFollow(container) {
+  return getDistanceFromBottom(container) <= 180;
+}
+
+function scrollIncomingMessageRowIntoView(row) {
+  const container = document.getElementById('messages-container');
+  if (!container || !row) return;
+
+  const targetTop = Math.max(0, row.offsetTop - container.clientHeight + row.offsetHeight + 12);
+  container.scrollTo({ top: targetTop, behavior: 'smooth' });
+}
+
 function isMessageRowVisibleOnScreen(row) {
   const container = document.getElementById('messages-container');
   if (!container || !row) return false;
@@ -775,6 +792,9 @@ async function handleIncomingSocketMessage(payload) {
     resolvedMediaUrl = await fetchMediaUrlById(payload.mediaId);
   }
 
+  const container = document.getElementById('messages-container');
+  const shouldFollowIncoming = !isMe && isNearBottomForIncomingFollow(container);
+
   const insertedRow = addMessage(payload.content || '', isMe, payload.content_type === 'audio', payload.clientMessageId, {
     messageId: payload.id,
     createdAt: payload.created_at,
@@ -784,8 +804,16 @@ async function handleIncomingSocketMessage(payload) {
     deliveryStatus: isMe ? 'Delivered' : null
   });
 
-  if (!isMe && insertedRow?.dataset?.messageId && !isMessageRowVisibleOnScreen(insertedRow)) {
-    showIncomingMessageJumpPill(insertedRow.dataset.messageId, getPreviewForIncomingMessage(payload));
+  if (!isMe && insertedRow?.dataset?.messageId) {
+    if (shouldFollowIncoming) {
+      scrollIncomingMessageRowIntoView(insertedRow);
+      hideIncomingMessageJumpPill();
+      return;
+    }
+
+    if (!isMessageRowVisibleOnScreen(insertedRow)) {
+      showIncomingMessageJumpPill(insertedRow.dataset.messageId, getPreviewForIncomingMessage(payload));
+    }
   }
 }
 
@@ -812,6 +840,7 @@ function showRemoteTypingIndicator(payload) {
 
   const container = document.getElementById('messages-container');
   if (!container) return;
+  const shouldFollowIncoming = isNearBottomForIncomingFollow(container);
 
   let row = document.getElementById('remote-typing-row');
   if (!row) {
@@ -820,6 +849,10 @@ function showRemoteTypingIndicator(payload) {
     row.className = 'msg-row';
     row.innerHTML = '<div class="msg-avatar">😄</div><div class="bubble them" style="padding:0"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
     container.appendChild(row);
+
+    if (shouldFollowIncoming) {
+      scrollMessagesToBottom(true);
+    }
   }
 
   if (window.remoteTypingHideTimeout) {
