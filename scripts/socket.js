@@ -11,6 +11,14 @@ function getSocketToken() {
   );
 }
 
+function isConversationCurrentlyVisibleOnScreen(conversationId) {
+  if (!conversationId) return false;
+  if (currentView !== 'view-chat') return false;
+  if (window.activeConversationId !== conversationId) return false;
+  if (document.visibilityState !== 'visible') return false;
+  return true;
+}
+
 function getApiBaseUrl() {
   return window.ZAP_API_URL || 'http://localhost:3000';
 }
@@ -327,7 +335,9 @@ async function openConversationById(conversationId) {
       window.renderConversationMessages(messages);
     }
 
-    markMessagesAsRead(conversationId, messages);
+    if (isConversationCurrentlyVisibleOnScreen(conversationId)) {
+      markMessagesAsRead(conversationId, messages);
+    }
 
     const existing = (window.conversations || []).find((item) => item.id === conversationId);
     if (existing) {
@@ -386,9 +396,9 @@ function initSocket() {
     if (
       conversationId &&
       payload?.id &&
-      window.activeConversationId === conversationId &&
       senderId &&
-      senderId !== currentUserId
+      senderId !== currentUserId &&
+      isConversationCurrentlyVisibleOnScreen(conversationId)
     ) {
       emitSocketEvent('message:read', {
         conversationId,
@@ -482,6 +492,28 @@ function initSocket() {
     if (payload?.code || payload?.message) {
       console.warn('[socket] event error', payload);
     }
+  });
+
+  const syncReadsIfVisible = async () => {
+    const conversationId = window.activeConversationId;
+    if (!isConversationCurrentlyVisibleOnScreen(conversationId)) return;
+
+    try {
+      const messages = await fetchConversationMessages(conversationId);
+      markMessagesAsRead(conversationId, messages);
+    } catch (_) {
+      // Ignore transient fetch errors during app focus transitions.
+    }
+  };
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      syncReadsIfVisible();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    syncReadsIfVisible();
   });
 }
 
