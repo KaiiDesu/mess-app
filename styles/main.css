@@ -101,6 +101,8 @@
   .avatar { width:52px; height:52px; border-radius:50%; background:var(--bg4); display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; position:relative; border:2px solid var(--bg3); }
   .avatar.themed { background:var(--theme,var(--bg4)); }
   .online-dot { position:absolute; bottom:1px; right:1px; width:12px; height:12px; background:var(--green); border-radius:50%; border:2.5px solid var(--bg); }
+  .online-dot.away { background:#f4b942; }
+  .online-dot.dnd { background:#e15554; }
   .chat-info { flex:1; min-width:0; }
   .chat-name { font-size:15px; font-weight:600; margin-bottom:3px; }
   .chat-preview { font-size:13px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

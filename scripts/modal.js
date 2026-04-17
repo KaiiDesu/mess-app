@@ -207,7 +207,12 @@ function formatFriendSubLabel(friend) {
     .toLowerCase()
     .replace(/\s+/g, '');
 
-  const presence = friend?.is_online ? 'Active now' : 'Offline';
+  const presence =
+    typeof getUserPresenceStatus === 'function' && typeof getPresenceStatusLabel === 'function'
+      ? getPresenceStatusLabel(getUserPresenceStatus(friend?.id, friend?.is_online))
+      : friend?.is_online
+      ? 'Online'
+      : 'Offline';
   return `@${username} · ${presence}`;
 }
 
@@ -227,9 +232,18 @@ function renderAcceptedFriends() {
       const name = escapeHtml(friend.display_name || 'Unknown user');
       const sub = escapeHtml(formatFriendSubLabel(friend));
       const avatar = getInitialAvatar(friend.display_name || friend.username || '?');
-      const onlineDot = friend.is_online
-        ? '<div class="online-dot" style="position:absolute;right:2px;bottom:2px"></div>'
-        : '';
+      const presenceStatus =
+        typeof getUserPresenceStatus === 'function'
+          ? getUserPresenceStatus(friend?.id, friend?.is_online)
+          : friend?.is_online
+          ? 'online'
+          : 'offline';
+      const dotClass =
+        typeof getPresenceDotClass === 'function' ? getPresenceDotClass(presenceStatus) : 'online';
+      const onlineDot =
+        presenceStatus !== 'offline'
+          ? `<div class="online-dot ${escapeHtml(dotClass)}" style="position:absolute;right:2px;bottom:2px"></div>`
+          : '';
 
       return `
         <div class="friend-item" data-friend-id="${id}" data-friend-name="${name}">

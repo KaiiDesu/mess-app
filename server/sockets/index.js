@@ -34,6 +34,12 @@ const initializeSocket = (io, authMiddleware) => {
     socket.on('message:typing_stop', (data) => messageSocket.handleTypingStop(socket, data, userId));
     socket.on('message:react', (data) => messageSocket.handleReact(socket, data, userId));
     socket.on('message:react_remove', (data) => messageSocket.handleReactRemove(socket, data, userId));
+    socket.on('presence:app_state', (data) =>
+      presenceSocket.handleAppStateUpdate(socket, data, userId)
+    );
+    socket.on('presence:network_state', (data) =>
+      presenceSocket.handleNetworkStateUpdate(socket, data, userId)
+    );
 
     // Friendship handlers
     socket.on('friendship:request_send', (data) =>

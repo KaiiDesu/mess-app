@@ -80,7 +80,12 @@ function openConversationSettings() {
 
   const status = document.getElementById('conv-settings-status');
   if (status) {
-    status.textContent = otherUser.is_online ? 'Active now' : 'Offline';
+    status.textContent =
+      typeof getUserPresenceStatus === 'function' && typeof getPresenceStatusLabel === 'function'
+        ? getPresenceStatusLabel(getUserPresenceStatus(otherUser.id, otherUser.is_online))
+        : otherUser.is_online
+        ? 'Online'
+        : 'Offline';
   }
 
   const modal = document.getElementById('conversation-settings-modal');

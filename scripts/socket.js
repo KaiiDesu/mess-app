@@ -15,6 +15,8 @@ function isAppForeground() {
   return window.__zapAppForeground !== false;
 }
 
+window.userPresenceById = window.userPresenceById || {};
+
 function areReadReceiptsEnabled() {
   return window.__zapReadReceiptsEnabled !== false;
 }
@@ -27,6 +29,92 @@ function setReadReceiptsEnabled(value) {
   window.__zapReadReceiptsEnabled = Boolean(value);
 }
 
+function normalizePresenceStatus(rawStatus, fallbackIsOnline) {
+  const normalized = String(rawStatus || '').toLowerCase();
+  if (normalized === 'online' || normalized === 'away' || normalized === 'offline' || normalized === 'dnd') {
+    return normalized;
+  }
+  return fallbackIsOnline ? 'online' : 'offline';
+}
+
+function getUserPresenceStatus(userId, fallbackIsOnline) {
+  if (userId && window.userPresenceById[userId]) {
+    return normalizePresenceStatus(window.userPresenceById[userId], fallbackIsOnline);
+  }
+  return normalizePresenceStatus('', fallbackIsOnline);
+}
+
+function getPresenceStatusLabel(status) {
+  const normalized = normalizePresenceStatus(status);
+  if (normalized === 'online') return 'Online';
+  if (normalized === 'away') return 'Away';
+  if (normalized === 'dnd') return 'Do not disturb';
+  return 'Offline';
+}
+
+function getPresenceDotClass(status) {
+  const normalized = normalizePresenceStatus(status);
+  if (normalized === 'away') return 'away';
+  if (normalized === 'dnd') return 'dnd';
+  return 'online';
+}
+
+function setChatHeaderPresenceStatus(status) {
+  const chatStatus = document.getElementById('chat-status');
+  if (!chatStatus) return;
+  chatStatus.textContent = `● ${getPresenceStatusLabel(status)}`;
+}
+
+function updateActiveChatHeaderPresence() {
+  if (!window.activeConversationId) return;
+  const conversation = (window.conversations || []).find((item) => item.id === window.activeConversationId);
+  const otherUser = conversation?.otherUser || {};
+  const status = getUserPresenceStatus(otherUser.id, otherUser.is_online);
+  setChatHeaderPresenceStatus(status);
+}
+
+function syncPresenceToConversations(userId, status) {
+  if (!userId || !Array.isArray(window.conversations)) return;
+
+  window.conversations.forEach((conversation) => {
+    if (conversation?.otherUser?.id === userId) {
+      conversation.otherUser = {
+        ...(conversation.otherUser || {}),
+        is_online: status !== 'offline',
+        presence_status: status
+      };
+    }
+  });
+}
+
+function syncPresenceToAcceptedFriends(userId, status) {
+  if (!userId || !Array.isArray(window.acceptedFriends)) return;
+
+  window.acceptedFriends = window.acceptedFriends.map((friend) => {
+    if (friend?.id !== userId) return friend;
+    return {
+      ...friend,
+      is_online: status !== 'offline',
+      presence_status: status
+    };
+  });
+}
+
+function emitPresenceAppState() {
+  if (!window.appSocket || !window.appSocket.connected) return;
+  window.appSocket.emit('presence:app_state', {
+    foreground: isAppForeground(),
+    networkOnline: navigator.onLine !== false
+  });
+}
+
+function emitPresenceNetworkState() {
+  if (!window.appSocket || !window.appSocket.connected) return;
+  window.appSocket.emit('presence:network_state', {
+    online: navigator.onLine !== false
+  });
+}
+
 function ensureAppForegroundTracking() {
   if (window.__zapForegroundTrackingInitialized) return;
   window.__zapForegroundTrackingInitialized = true;
@@ -37,27 +125,49 @@ function ensureAppForegroundTracking() {
   document.addEventListener('visibilitychange', () => {
     const visible = document.visibilityState === 'visible';
     setAppForeground(visible);
+    emitPresenceAppState();
     if (!visible) {
       setReadReceiptsEnabled(false);
     }
   });
 
   // Mobile webviews and desktop browsers can differ in which lifecycle events fire.
-  window.addEventListener('focus', () => setAppForeground(true));
+  window.addEventListener('focus', () => {
+    setAppForeground(true);
+    emitPresenceAppState();
+  });
   window.addEventListener('blur', () => {
     setAppForeground(false);
     setReadReceiptsEnabled(false);
+    emitPresenceAppState();
   });
-  window.addEventListener('pageshow', () => setAppForeground(true));
+  window.addEventListener('pageshow', () => {
+    setAppForeground(true);
+    emitPresenceAppState();
+  });
   window.addEventListener('pagehide', () => {
     setAppForeground(false);
     setReadReceiptsEnabled(false);
+    emitPresenceAppState();
   });
 
-  document.addEventListener('resume', () => setAppForeground(true));
+  document.addEventListener('resume', () => {
+    setAppForeground(true);
+    emitPresenceAppState();
+  });
   document.addEventListener('pause', () => {
     setAppForeground(false);
     setReadReceiptsEnabled(false);
+    emitPresenceAppState();
+  });
+
+  window.addEventListener('online', () => {
+    emitPresenceNetworkState();
+    emitPresenceAppState();
+  });
+  window.addEventListener('offline', () => {
+    emitPresenceNetworkState();
+    emitPresenceAppState();
   });
 
   const enableOnInteraction = () => {
@@ -200,7 +310,9 @@ function renderConversationList(conversations) {
         formatChatTimeLabel(conversation.updated_at || conversation.lastMessage?.created_at)
       );
       const avatar = escapeHtml(getInitialAvatar(otherUser.display_name || displayName));
-      const onlineDot = otherUser.is_online ? '<div class="online-dot"></div>' : '';
+      const status = getUserPresenceStatus(otherUser.id, otherUser.is_online);
+      const onlineDot =
+        status !== 'offline' ? `<div class="online-dot ${escapeHtml(getPresenceDotClass(status))}"></div>` : '';
       const unreadCount = Number(conversation.unreadCount || 0);
       const unreadClass = unreadCount > 0 ? ' unread' : '';
       const unreadBadge = unreadCount > 0 ? `<div class="unread-badge">${unreadCount}</div>` : '';
@@ -329,6 +441,15 @@ async function loadConversations() {
       ...conversation,
       unreadCount: Number(conversation.unreadCount || conversation.unread_count || 0)
     }));
+    window.conversations.forEach((conversation) => {
+      const otherUser = conversation?.otherUser;
+      if (otherUser?.id && !window.userPresenceById[otherUser.id]) {
+        window.userPresenceById[otherUser.id] = normalizePresenceStatus(
+          otherUser.presence_status,
+          otherUser.is_online
+        );
+      }
+    });
     writeCachedConversations(window.conversations);
     renderConversationList(window.conversations);
   } catch (_) {
@@ -428,7 +549,7 @@ async function openConversationById(conversationId) {
 
   const chatStatus = document.getElementById('chat-status');
   if (chatStatus) {
-    chatStatus.textContent = otherUser.is_online ? '● Active now' : '● Offline';
+    setChatHeaderPresenceStatus(getUserPresenceStatus(otherUser.id, otherUser.is_online));
   }
 
   applyThemeFromConversation(conversation);
@@ -487,6 +608,8 @@ function initSocket() {
   window.appSocket.on('connect', () => {
     console.log('[socket] connected', window.appSocket.id);
     loadConversations();
+    emitPresenceNetworkState();
+    emitPresenceAppState();
   });
 
   window.appSocket.on('connect_error', (err) => {
@@ -556,7 +679,32 @@ function initSocket() {
   });
 
   window.appSocket.on('user:presence_update', (payload) => {
-    console.log('[socket] user:presence_update', payload);
+    const userId = payload?.userId;
+    if (!userId) return;
+
+    const status = normalizePresenceStatus(payload?.status, payload?.is_online);
+    window.userPresenceById[userId] = status;
+
+    syncPresenceToConversations(userId, status);
+    syncPresenceToAcceptedFriends(userId, status);
+    updateActiveChatHeaderPresence();
+
+    if (Array.isArray(window.conversations)) {
+      renderConversationList(window.conversations);
+    }
+
+    if (typeof renderAcceptedFriends === 'function') {
+      renderAcceptedFriends();
+    }
+
+    const conversation = (window.conversations || []).find((item) => item.id === window.activeConversationId);
+    const activeOtherUserId = conversation?.otherUser?.id;
+    if (activeOtherUserId && activeOtherUserId === userId) {
+      const settingsStatus = document.getElementById('conv-settings-status');
+      if (settingsStatus) {
+        settingsStatus.textContent = getPresenceStatusLabel(status);
+      }
+    }
   });
 
   window.appSocket.on('conversation:theme_updated', (payload) => {
