@@ -374,6 +374,7 @@ function onInputChange(el) {
 
 function sendMessage() {
   const input = document.getElementById('msg-input');
+  if (!input) return;
   const text = input.value.trim();
   if (!text) return;
 
@@ -411,6 +412,13 @@ function sendMessage() {
     window.typingStopTimeout = null;
   }
   emitTypingStop();
+
+  // Keep keyboard open after send while user remains in chat.
+  if (currentView === 'view-chat' && window.activeConversationId) {
+    requestAnimationFrame(() => {
+      input.focus();
+    });
+  }
 }
 
 function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {

@@ -3,6 +3,13 @@ function navigate(viewId) {
   const next = document.getElementById(viewId);
   if (!next) return;
 
+  if (currentView === 'view-chat' && viewId !== 'view-chat') {
+    const msgInput = document.getElementById('msg-input');
+    if (msgInput && document.activeElement === msgInput) {
+      msgInput.blur();
+    }
+  }
+
   // If user leaves chat screen, clear active realtime conversation context.
   if (currentView === 'view-chat' && viewId !== 'view-chat' && window.activeConversationId) {
     if (typeof window.pauseAllInlineChatVideos === 'function') {
