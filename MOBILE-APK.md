@@ -55,3 +55,23 @@ Then rebuild APK.
 - Backend must be online and reachable from your phone network.
 - For Socket.IO in production, set backend `SOCKET_IO_CORS` to your app/web origin(s).
 - If login works but realtime fails, verify backend URL in [scripts/mobile-config.js](scripts/mobile-config.js) and redeploy/rebuild.
+
+## iOS Setup (Mac required)
+
+1. Use a Mac with Xcode installed.
+2. From project root run:
+
+npm run mobile:add:ios
+npm run mobile:sync:ios
+npm run mobile:ios
+
+3. In Xcode:
+- Select your Apple Team in Signing & Capabilities.
+- Set a unique bundle identifier (if needed).
+- Choose your connected iPhone as target.
+- Press Run to install directly on device.
+
+## iOS Distribution
+
+1. For TestFlight/App Store, archive in Xcode and upload using Organizer.
+2. You need an Apple Developer account for distribution.

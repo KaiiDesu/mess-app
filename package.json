@@ -8,8 +8,11 @@
     "start": "node index.js",
     "mobile:prepare": "node scripts/prepare-mobile-assets.js",
     "mobile:add:android": "npm run mobile:prepare && npx cap add android",
+    "mobile:add:ios": "npm run mobile:prepare && npx cap add ios",
     "mobile:sync": "npm run mobile:prepare && npx cap sync android",
+    "mobile:sync:ios": "npm run mobile:prepare && npx cap sync ios",
     "mobile:android": "npm run mobile:sync && npx cap open android",
+    "mobile:ios": "npm run mobile:sync:ios && npx cap open ios",
     "mobile:apk:debug": "npm run mobile:sync && cd android && gradlew.bat assembleDebug"
   },
   "keywords": [],
