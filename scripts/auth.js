@@ -189,6 +189,16 @@ async function registerAccount() {
   }
 
   navigate('view-home');
+
+  if (typeof loadConversations === 'function') {
+    loadConversations();
+  }
+  if (typeof loadPendingFriendRequests === 'function') {
+    loadPendingFriendRequests();
+  }
+  if (typeof loadAcceptedFriends === 'function') {
+    loadAcceptedFriends();
+  }
 }
 
 async function loginAccount() {
@@ -231,6 +241,16 @@ async function loginAccount() {
   }
 
   navigate('view-home');
+
+  if (typeof loadConversations === 'function') {
+    loadConversations();
+  }
+  if (typeof loadPendingFriendRequests === 'function') {
+    loadPendingFriendRequests();
+  }
+  if (typeof loadAcceptedFriends === 'function') {
+    loadAcceptedFriends();
+  }
 }
 
 window.registerAccount = registerAccount;

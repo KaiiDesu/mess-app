@@ -149,6 +149,24 @@ function getConversationDisplayName(conversation) {
   return otherUser.nickname || otherUser.display_name || 'Unknown user';
 }
 
+function readCachedConversations() {
+  try {
+    const raw = localStorage.getItem('zap_cached_conversations') || '[]';
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeCachedConversations(conversations) {
+  try {
+    localStorage.setItem('zap_cached_conversations', JSON.stringify(conversations || []));
+  } catch (_) {
+    // Ignore storage quota/errors; cache is best-effort only.
+  }
+}
+
 function applyThemeFromConversation(conversation) {
   if (!conversation || !conversation.theme_gradient) return;
 
@@ -281,7 +299,16 @@ async function loadConversations() {
     return;
   }
 
-  renderConversationListLoadingState();
+  const cached = readCachedConversations();
+  if (cached.length) {
+    window.conversations = cached.map((conversation) => ({
+      ...conversation,
+      unreadCount: Number(conversation.unreadCount || conversation.unread_count || 0)
+    }));
+    renderConversationList(window.conversations);
+  } else {
+    renderConversationListLoadingState();
+  }
 
   try {
     const response = await fetch(`${getApiBaseUrl()}/api/conversations`, {
@@ -302,10 +329,13 @@ async function loadConversations() {
       ...conversation,
       unreadCount: Number(conversation.unreadCount || conversation.unread_count || 0)
     }));
+    writeCachedConversations(window.conversations);
     renderConversationList(window.conversations);
   } catch (_) {
-    renderConversationList([]);
-    window.conversations = [];
+    if (!window.conversations || !window.conversations.length) {
+      renderConversationList([]);
+      window.conversations = [];
+    }
   }
 }
 
