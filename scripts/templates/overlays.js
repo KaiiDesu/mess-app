@@ -1,5 +1,13 @@
 ﻿window.ZapTemplateParts = window.ZapTemplateParts || {};
 window.ZapTemplateParts.overlays = String.raw`
+    <!-- ==================== SERVER DOWN OVERLAY ==================== -->
+    <div class="server-down-overlay" id="server-down-overlay" aria-live="assertive" aria-hidden="true">
+      <div class="server-down-card">
+        <div class="server-down-title">Server down</div>
+        <div class="server-down-text">Service is temporarily unavailable. Please try again in a few minutes.</div>
+      </div>
+    </div>
+
 <!-- ==================== ADD FRIEND MODAL ==================== -->
     <div class="modal" id="add-friend-modal" onclick="closeModal(event)">
       <div class="modal-sheet">

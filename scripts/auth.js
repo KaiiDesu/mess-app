@@ -2,6 +2,130 @@ function getApiBaseUrl() {
   return window.ZAP_API_URL || 'http://localhost:3000';
 }
 
+let serverDownRetryTimer = null;
+let serverDownRetryInFlight = false;
+
+function stopServerDownAutoRetry() {
+  if (!serverDownRetryTimer) return;
+  clearInterval(serverDownRetryTimer);
+  serverDownRetryTimer = null;
+}
+
+async function pingServerHealth() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/health`, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    return response.ok;
+  } catch (_) {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function startServerDownAutoRetry() {
+  if (serverDownRetryTimer) return;
+
+  serverDownRetryTimer = setInterval(async () => {
+    if (serverDownRetryInFlight) return;
+    serverDownRetryInFlight = true;
+
+    try {
+      const reachable = await pingServerHealth();
+      if (reachable) {
+        setServerDownOverlayVisible(false);
+      }
+    } finally {
+      serverDownRetryInFlight = false;
+    }
+  }, 12000);
+}
+
+function setServerDownOverlayVisible(isVisible) {
+  const overlay = document.getElementById('server-down-overlay');
+  if (!overlay) return;
+
+  overlay.classList.toggle('show', Boolean(isVisible));
+  overlay.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+
+  if (isVisible) {
+    startServerDownAutoRetry();
+  } else {
+    stopServerDownAutoRetry();
+  }
+}
+
+function isServerDownResponse(response) {
+  if (!response) return true;
+  return response.status >= 500 || response.status === 0;
+}
+
+async function checkServerAvailability(token) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/api/conversations?limit=1`, {
+      method: 'GET',
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`
+          }
+        : {},
+      signal: controller.signal
+    });
+
+    if (isServerDownResponse(response)) {
+      return { reachable: false, unauthorized: false };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return { reachable: true, unauthorized: true };
+    }
+
+    return { reachable: true, unauthorized: false };
+  } catch (_) {
+    return { reachable: false, unauthorized: false };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function bootstrapSessionOnLaunch() {
+  const token = getStoredAuthToken();
+  if (!token || currentView !== 'view-login') {
+    setServerDownOverlayVisible(false);
+    return;
+  }
+
+  const serverState = await checkServerAvailability(token);
+
+  if (!serverState.reachable) {
+    clearAuthSession();
+    if (window.appSocket) {
+      window.appSocket.disconnect();
+    }
+    navigate('view-login');
+    setServerDownOverlayVisible(true);
+    return;
+  }
+
+  if (serverState.unauthorized) {
+    clearAuthSession();
+    navigate('view-login');
+    setServerDownOverlayVisible(false);
+    return;
+  }
+
+  setServerDownOverlayVisible(false);
+  navigate('view-home');
+}
+
 function getStoredAuthToken() {
   return (
     localStorage.getItem('zap_jwt') ||
@@ -142,6 +266,8 @@ async function hydrateProfileHeader() {
 }
 
 async function registerAccount() {
+  setServerDownOverlayVisible(false);
+
   if (typeof window.ensureSystemNotificationPermissionWithFeedback === 'function') {
     window.ensureSystemNotificationPermissionWithFeedback();
   } else if (typeof window.ensureSystemNotificationPermission === 'function') {
@@ -202,6 +328,8 @@ async function registerAccount() {
 }
 
 async function loginAccount() {
+  setServerDownOverlayVisible(false);
+
   if (typeof window.ensureSystemNotificationPermissionWithFeedback === 'function') {
     window.ensureSystemNotificationPermissionWithFeedback();
   } else if (typeof window.ensureSystemNotificationPermission === 'function') {
@@ -285,9 +413,5 @@ document.addEventListener('DOMContentLoaded', () => {
     rememberToggle.checked = readRememberPreference();
   }
 
-  // Auto-restore remembered login when app restarts on this device.
-  const token = getStoredAuthToken();
-  if (token && currentView === 'view-login') {
-    navigate('view-home');
-  }
+  bootstrapSessionOnLaunch();
 });

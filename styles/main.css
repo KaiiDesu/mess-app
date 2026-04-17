@@ -262,6 +262,47 @@
   .theme-option.active::after { content:'✓'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:16px; color:white; font-weight:700; }
   .theme-option:active { transform:scale(0.9); }
 
+  /* SERVER DOWN OVERLAY */
+  .server-down-overlay {
+    position:fixed;
+    inset:0;
+    z-index:1200;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:28px;
+    opacity:0;
+    pointer-events:none;
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    background:rgba(6, 8, 18, 0.42);
+    transition:opacity 0.22s ease;
+  }
+  .server-down-overlay.show {
+    opacity:1;
+    pointer-events:auto;
+  }
+  .server-down-card {
+    width:min(360px, 100%);
+    border-radius:20px;
+    border:1px solid rgba(255, 255, 255, 0.15);
+    background:linear-gradient(180deg, rgba(19, 23, 43, 0.96), rgba(11, 14, 29, 0.96));
+    box-shadow:0 24px 48px rgba(0, 0, 0, 0.42);
+    padding:22px 20px;
+    text-align:center;
+  }
+  .server-down-title {
+    font-size:22px;
+    font-weight:700;
+    letter-spacing:-0.4px;
+  }
+  .server-down-text {
+    margin-top:10px;
+    font-size:13px;
+    color:var(--text2);
+    line-height:1.55;
+  }
+
   /* PROFILE / SETTINGS */
   .profile-hero { padding:24px 20px 16px; display:flex; flex-direction:column; align-items:center; gap:12px; position:relative; }
   .profile-avatar { width:88px; height:88px; border-radius:50%; background:var(--bg4); display:flex; align-items:center; justify-content:center; font-size:38px; border:3px solid var(--accent); box-shadow:0 0 0 6px var(--accent-dim); position:relative; }
