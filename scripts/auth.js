@@ -4,6 +4,21 @@ function getApiBaseUrl() {
 
 let serverDownRetryTimer = null;
 let serverDownRetryInFlight = false;
+let serverDownWasActive = false;
+
+function showServerRecoveryNotice() {
+  const message = 'You were automatically logged out by session. The server is back online.';
+
+  if (typeof window.showInAppNotificationToast === 'function') {
+    window.showInAppNotificationToast({
+      senderName: 'Zap',
+      messageText: message
+    });
+    return;
+  }
+
+  window.alert(message);
+}
 
 function stopServerDownAutoRetry() {
   if (!serverDownRetryTimer) return;
@@ -28,6 +43,21 @@ async function pingServerHealth() {
   }
 }
 
+function handleServerRecovered() {
+  const noticePending = sessionStorage.getItem('zap_server_down_notice_pending') === '1';
+  serverDownWasActive = false;
+  sessionStorage.removeItem('zap_server_down_notice_pending');
+  setServerDownOverlayVisible(false);
+
+  if (noticePending) {
+    showServerRecoveryNotice();
+  }
+
+  if (currentView === 'view-login') {
+    bootstrapSessionOnLaunch();
+  }
+}
+
 function startServerDownAutoRetry() {
   if (serverDownRetryTimer) return;
 
@@ -38,7 +68,7 @@ function startServerDownAutoRetry() {
     try {
       const reachable = await pingServerHealth();
       if (reachable) {
-        setServerDownOverlayVisible(false);
+        handleServerRecovered();
       }
     } finally {
       serverDownRetryInFlight = false;
@@ -54,6 +84,7 @@ function setServerDownOverlayVisible(isVisible) {
   overlay.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
 
   if (isVisible) {
+    serverDownWasActive = true;
     startServerDownAutoRetry();
   } else {
     stopServerDownAutoRetry();
@@ -106,7 +137,8 @@ async function bootstrapSessionOnLaunch() {
   const serverState = await checkServerAvailability(token);
 
   if (!serverState.reachable) {
-    clearAuthSession();
+    sessionStorage.setItem('zap_server_down_notice_pending', '1');
+    clearAuthSession({ preserveRememberedSession: true });
     if (window.appSocket) {
       window.appSocket.disconnect();
     }
@@ -116,7 +148,7 @@ async function bootstrapSessionOnLaunch() {
   }
 
   if (serverState.unauthorized) {
-    clearAuthSession();
+    clearAuthSession({ preserveRememberedSession: true });
     navigate('view-login');
     setServerDownOverlayVisible(false);
     return;
@@ -162,13 +194,19 @@ function saveAuthSession(token, user, rememberMe) {
   localStorage.setItem('zap_remember_me', rememberMe ? '1' : '0');
 }
 
-function clearAuthSession() {
-  localStorage.removeItem('zap_jwt');
-  localStorage.removeItem('zap_user');
-  localStorage.removeItem('token');
+function clearAuthSession(options = {}) {
+  const preserveRememberedSession = Boolean(options?.preserveRememberedSession && readRememberPreference());
+
+  if (!preserveRememberedSession) {
+    localStorage.removeItem('zap_jwt');
+    localStorage.removeItem('zap_user');
+    localStorage.removeItem('token');
+  }
+
   sessionStorage.removeItem('zap_jwt');
   sessionStorage.removeItem('zap_user');
   sessionStorage.removeItem('token');
+  sessionStorage.removeItem('zap_server_down_notice_pending');
 }
 
 function readRememberPreference() {
@@ -389,6 +427,7 @@ function getCurrentSessionUser() {
 }
 
 function signOut() {
+  sessionStorage.removeItem('zap_server_down_notice_pending');
   clearAuthSession();
 
   if (window.appSocket) {
