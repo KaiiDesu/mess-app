@@ -73,7 +73,7 @@ const getConversations = async (req, res) => {
       .select(
         `
         *,
-        messages(id, content, content_type, media_id, created_at)
+        messages(id, sender_id, content, content_type, media_id, created_at)
       `
       )
       .or(`user_1_id.eq.${userId},user_2_id.eq.${userId}`)
@@ -144,6 +144,27 @@ const getConversations = async (req, res) => {
           (a, b) => new Date(b.created_at) - new Date(a.created_at)
         );
         const lastMessage = sortedMessages[0] || null;
+        let lastMessageWithSeenState = lastMessage
+          ? {
+              ...lastMessage,
+              is_seen_by_other: false
+            }
+          : null;
+
+        if (lastMessage && lastMessage.sender_id === userId) {
+          const { data: lastMessageReceipt } = await supabase
+            .from('message_read_receipts')
+            .select('message_id')
+            .eq('message_id', lastMessage.id)
+            .eq('reader_id', otherUserId)
+            .maybeSingle();
+
+          lastMessageWithSeenState = {
+            ...lastMessage,
+            is_seen_by_other: Boolean(lastMessageReceipt)
+          };
+        }
+
         const hiddenForUser = Boolean(clearTimestamp && !lastMessage);
 
         return {
@@ -153,7 +174,7 @@ const getConversations = async (req, res) => {
             nickname
           },
           unreadCount,
-          lastMessage,
+          lastMessage: lastMessageWithSeenState,
           hiddenForUser
         };
       })

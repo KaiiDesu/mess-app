@@ -241,17 +241,27 @@ function getConversationPreview(conversation) {
   const lastMessage = conversation?.lastMessage || {};
   const contentType = String(lastMessage.content_type || '').toLowerCase();
   const text = lastMessage.content || '';
+  const currentUserId = getCurrentSessionUserId();
+  const isSeenOwnLastMessage = Boolean(
+    lastMessage?.sender_id &&
+      currentUserId &&
+      lastMessage.sender_id === currentUserId &&
+      lastMessage.is_seen_by_other
+  );
+
+  const withSeenPrefix = (preview) => (isSeenOwnLastMessage ? `Sent: ${preview}` : preview);
 
   if (contentType === 'image' || String(text).startsWith('data:image/')) {
-    return 'Sent a photo';
+    return withSeenPrefix('Sent a photo');
   }
 
   if (contentType === 'video' || String(text).startsWith('data:video/')) {
-    return 'Sent a video';
+    return withSeenPrefix('Sent a video');
   }
 
   if (!text) return 'No messages yet';
-  return text.length > 48 ? `${text.slice(0, 48)}...` : text;
+  const preview = text.length > 48 ? `${text.slice(0, 48)}...` : text;
+  return withSeenPrefix(preview);
 }
 
 function getConversationDisplayName(conversation) {
@@ -359,9 +369,11 @@ function upsertConversationFromIncomingMessage(payload) {
 
   existing.lastMessage = {
     id: payload.id,
+    sender_id: senderId,
     content: payload.content || '',
     content_type: payload.content_type || (payload.mediaUrl ? 'image' : 'text'),
-    created_at: payload.created_at || new Date().toISOString()
+    created_at: payload.created_at || new Date().toISOString(),
+    is_seen_by_other: false
   };
   existing.updated_at = payload.created_at || new Date().toISOString();
 
@@ -376,6 +388,31 @@ function upsertConversationFromIncomingMessage(payload) {
   const reordered = [existing, ...existingList.filter((c) => c.id !== conversationId)];
   window.conversations = reordered;
   renderConversationList(reordered);
+}
+
+function applyConversationSeenStateFromReadReceipt(payload) {
+  const conversationId = payload?.conversationId;
+  const messageIds = Array.isArray(payload?.messageIds) ? payload.messageIds : [];
+  if (!conversationId || !messageIds.length) return;
+
+  const currentUserId = getCurrentSessionUserId();
+  if (!currentUserId) return;
+
+  const conversations = Array.isArray(window.conversations) ? window.conversations : [];
+  const conversation = conversations.find((item) => item.id === conversationId);
+  const lastMessage = conversation?.lastMessage;
+  if (!conversation || !lastMessage?.id) return;
+  if (lastMessage.sender_id !== currentUserId) return;
+  if (!messageIds.includes(lastMessage.id)) return;
+  if (lastMessage.is_seen_by_other) return;
+
+  conversation.lastMessage = {
+    ...lastMessage,
+    is_seen_by_other: true
+  };
+
+  writeCachedConversations(window.conversations);
+  renderConversationList(window.conversations);
 }
 
 function markMessagesAsRead(conversationId, messages) {
@@ -675,6 +712,7 @@ function initSocket() {
   });
 
   window.appSocket.on('message:read_receipt', (payload) => {
+    applyConversationSeenStateFromReadReceipt(payload);
     if (typeof window.handleMessageReadReceipt === 'function') {
       window.handleMessageReadReceipt(payload);
     }
