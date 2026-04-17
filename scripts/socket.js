@@ -15,8 +15,16 @@ function isAppForeground() {
   return window.__zapAppForeground !== false;
 }
 
+function areReadReceiptsEnabled() {
+  return window.__zapReadReceiptsEnabled !== false;
+}
+
 function setAppForeground(value) {
   window.__zapAppForeground = Boolean(value);
+}
+
+function setReadReceiptsEnabled(value) {
+  window.__zapReadReceiptsEnabled = Boolean(value);
 }
 
 function ensureAppForegroundTracking() {
@@ -24,19 +32,44 @@ function ensureAppForegroundTracking() {
   window.__zapForegroundTrackingInitialized = true;
 
   setAppForeground(true);
+  setReadReceiptsEnabled(true);
 
   document.addEventListener('visibilitychange', () => {
-    setAppForeground(document.visibilityState === 'visible');
+    const visible = document.visibilityState === 'visible';
+    setAppForeground(visible);
+    if (!visible) {
+      setReadReceiptsEnabled(false);
+    }
   });
 
   // Mobile webviews and desktop browsers can differ in which lifecycle events fire.
   window.addEventListener('focus', () => setAppForeground(true));
-  window.addEventListener('blur', () => setAppForeground(false));
+  window.addEventListener('blur', () => {
+    setAppForeground(false);
+    setReadReceiptsEnabled(false);
+  });
   window.addEventListener('pageshow', () => setAppForeground(true));
-  window.addEventListener('pagehide', () => setAppForeground(false));
+  window.addEventListener('pagehide', () => {
+    setAppForeground(false);
+    setReadReceiptsEnabled(false);
+  });
 
   document.addEventListener('resume', () => setAppForeground(true));
-  document.addEventListener('pause', () => setAppForeground(false));
+  document.addEventListener('pause', () => {
+    setAppForeground(false);
+    setReadReceiptsEnabled(false);
+  });
+
+  const enableOnInteraction = () => {
+    if (isAppForeground()) {
+      setReadReceiptsEnabled(true);
+    }
+  };
+
+  document.addEventListener('pointerdown', enableOnInteraction, { passive: true });
+  document.addEventListener('touchstart', enableOnInteraction, { passive: true });
+  document.addEventListener('keydown', enableOnInteraction);
+  document.addEventListener('wheel', enableOnInteraction, { passive: true });
 }
 
 function isConversationCurrentlyVisibleOnScreen(conversationId) {
@@ -44,6 +77,7 @@ function isConversationCurrentlyVisibleOnScreen(conversationId) {
   if (currentView !== 'view-chat') return false;
   if (window.activeConversationId !== conversationId) return false;
   if (!isAppForeground()) return false;
+  if (!areReadReceiptsEnabled()) return false;
   if (document.visibilityState !== 'visible') return false;
   if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
   return true;
