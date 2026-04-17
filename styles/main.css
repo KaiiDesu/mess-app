@@ -32,7 +32,7 @@
   .view.slide-left { transform:translateX(-30%); opacity:0; pointer-events:none; }
 
   /* STATUS BAR */
-  .status-bar { display:flex; justify-content:space-between; align-items:center; padding:8px 24px 0; font-size:12px; font-weight:600; color:var(--text2); flex-shrink:0; }
+  .status-bar { display:none; }
   .status-icons { display:flex; gap:5px; align-items:center; }
   .status-icons svg { width:14px; height:14px; fill:var(--text2); }
 
