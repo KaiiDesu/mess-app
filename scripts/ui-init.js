@@ -1,10 +1,5 @@
 function showToast() {
-  if (typeof window.showInAppNotificationToast === 'function') {
-    window.showInAppNotificationToast({
-      senderName: 'Zap',
-      messageText: 'Notifications are enabled.'
-    });
-  }
+  // Intentionally no-op: removed notification test toast trigger.
 }
 
 let pressTimer;

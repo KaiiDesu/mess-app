@@ -270,26 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNativeNotificationChannel();
   attachNativeNotificationListeners();
   installNotificationPermissionNudge();
-  // Smoke-test the in-app notification surface once after boot.
-  setTimeout(() => {
-    showInAppNotificationToast({ senderName: 'Zap', messageText: 'Notifications ready' });
-  }, 500);
 });
 
 window.ensureSystemNotificationPermissionWithFeedback = async () => {
   const result = await ensureSystemNotificationPermission();
-  if (result === 'granted') {
-    showInAppNotificationToast({
-      senderName: 'Zap',
-      messageText: 'System notifications are enabled.'
-    });
-
-    showSystemNotification({
-      senderName: 'Zap',
-      messageText: 'Notification test successful.',
-      conversationId: null
-    });
-  }
   if (result === 'unsupported') {
     showInAppNotificationToast({
       senderName: 'Zap',
