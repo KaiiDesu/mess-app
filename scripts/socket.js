@@ -634,13 +634,20 @@ async function openConversationById(conversationId) {
   window.activeConversationId = conversationId;
   joinConversation(conversationId);
 
-  if (typeof window.renderConversationLoadingState === 'function') {
-    window.__zapConversationMessagesLoadingId = conversationId;
-    window.renderConversationLoadingState();
-  }
+  window.__zapConversationMessagesLoadingId = conversationId;
+  const loadingTimer =
+    typeof window.renderConversationLoadingState === 'function'
+      ? setTimeout(() => {
+          if (window.__zapConversationMessagesLoadingId !== conversationId) return;
+          window.renderConversationLoadingState();
+        }, 220)
+      : null;
 
   try {
     const messages = await fetchConversationMessages(conversationId);
+    if (loadingTimer) {
+      clearTimeout(loadingTimer);
+    }
     if (typeof window.renderConversationMessages === 'function') {
       window.renderConversationMessages(messages);
     }
@@ -657,11 +664,18 @@ async function openConversationById(conversationId) {
       renderConversationList(window.conversations);
     }
   } catch (error) {
+    if (loadingTimer) {
+      clearTimeout(loadingTimer);
+    }
     if (typeof window.renderConversationMessages === 'function') {
       window.renderConversationMessages([]);
     }
     console.warn('[chat] failed loading messages:', error?.message || error);
   } finally {
+    if (loadingTimer) {
+      clearTimeout(loadingTimer);
+    }
+
     if (window.__zapConversationMessagesLoadingId === conversationId) {
       window.__zapConversationMessagesLoadingId = null;
     }
@@ -670,6 +684,149 @@ async function openConversationById(conversationId) {
       window.flushQueuedIncomingMessagesForConversation(conversationId);
     }
   }
+}
+
+let inboundMessageQueue = [];
+let inboundMessageFlushRafId = 0;
+let inboundMessageFlushFallbackId = 0;
+let lastInboundMessageAt = 0;
+let inboundBurstModeUntil = 0;
+
+function nowForInboundQueue() {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function compareInboundPayloadChronologically(a, b) {
+  const aTime = Date.parse(a?.created_at || a?.createdAt || '') || 0;
+  const bTime = Date.parse(b?.created_at || b?.createdAt || '') || 0;
+  if (aTime !== bTime) {
+    return aTime - bTime;
+  }
+
+  const aId = String(a?.id || a?.clientMessageId || '');
+  const bId = String(b?.id || b?.clientMessageId || '');
+  return aId.localeCompare(bId);
+}
+
+function noteInboundMessageTraffic() {
+  const now = nowForInboundQueue();
+  if (now - lastInboundMessageAt <= 100) {
+    inboundBurstModeUntil = now + 550;
+  }
+  lastInboundMessageAt = now;
+}
+
+function isInboundBurstModeActive() {
+  return nowForInboundQueue() < inboundBurstModeUntil;
+}
+
+function cancelInboundFlushTimers() {
+  if (inboundMessageFlushRafId) {
+    cancelAnimationFrame(inboundMessageFlushRafId);
+    inboundMessageFlushRafId = 0;
+  }
+  if (inboundMessageFlushFallbackId) {
+    clearTimeout(inboundMessageFlushFallbackId);
+    inboundMessageFlushFallbackId = 0;
+  }
+}
+
+function processInboundMessagePayload(payload, pendingReadMap) {
+  if (!payload) return;
+
+  upsertConversationFromIncomingMessage(payload);
+
+  if (typeof window.notifyIncomingMessage === 'function') {
+    window.notifyIncomingMessage(payload);
+  }
+
+  const conversationId = payload?.conversation_id || payload?.conversationId;
+  const currentUserId = getCurrentSessionUserId();
+  const senderId = payload?.sender_id || null;
+
+  if (
+    conversationId &&
+    payload?.id &&
+    senderId &&
+    senderId !== currentUserId &&
+    isConversationCurrentlyVisibleOnScreen(conversationId)
+  ) {
+    if (!pendingReadMap.has(conversationId)) {
+      pendingReadMap.set(conversationId, []);
+    }
+    pendingReadMap.get(conversationId).push(payload.id);
+  }
+
+  if (typeof window.handleIncomingSocketMessage === 'function') {
+    window.handleIncomingSocketMessage(payload);
+  }
+}
+
+function flushInboundMessageQueue() {
+  cancelInboundFlushTimers();
+  if (!inboundMessageQueue.length) return;
+
+  const batch = inboundMessageQueue.splice(0, inboundMessageQueue.length);
+  batch.sort(compareInboundPayloadChronologically);
+
+  const pendingReadMap = new Map();
+  batch.forEach((payload) => {
+    processInboundMessagePayload(payload, pendingReadMap);
+  });
+
+  pendingReadMap.forEach((messageIds, conversationId) => {
+    const uniqueIds = [...new Set((messageIds || []).filter(Boolean))];
+    if (!conversationId || !uniqueIds.length) return;
+
+    emitSocketEvent('message:read', {
+      conversationId,
+      messageIds: uniqueIds
+    });
+  });
+
+  if (inboundMessageQueue.length) {
+    scheduleInboundQueueFlush();
+  }
+}
+
+function scheduleInboundQueueFlush() {
+  if (inboundMessageFlushRafId || inboundMessageFlushFallbackId) return;
+
+  inboundMessageFlushRafId = requestAnimationFrame(() => {
+    flushInboundMessageQueue();
+  });
+
+  // Background tabs/webviews may throttle rAF heavily; fallback keeps queue moving.
+  inboundMessageFlushFallbackId = setTimeout(() => {
+    flushInboundMessageQueue();
+  }, 20);
+}
+
+function enqueueInboundMessagePayload(payload) {
+  noteInboundMessageTraffic();
+  inboundMessageQueue.push(payload);
+
+  // Quiet traffic stays snappy: process first message immediately when not in burst mode.
+  if (!isInboundBurstModeActive() && inboundMessageQueue.length === 1) {
+    const pendingReadMap = new Map();
+    const immediate = inboundMessageQueue.shift();
+    processInboundMessagePayload(immediate, pendingReadMap);
+
+    pendingReadMap.forEach((messageIds, conversationId) => {
+      const uniqueIds = [...new Set((messageIds || []).filter(Boolean))];
+      if (!conversationId || !uniqueIds.length) return;
+
+      emitSocketEvent('message:read', {
+        conversationId,
+        messageIds: uniqueIds
+      });
+    });
+    return;
+  }
+
+  scheduleInboundQueueFlush();
 }
 
 function initSocket() {
@@ -711,32 +868,7 @@ function initSocket() {
 
   window.appSocket.on('message:received', (payload) => {
     console.log('[socket] message:received', payload);
-    upsertConversationFromIncomingMessage(payload);
-
-    if (typeof window.notifyIncomingMessage === 'function') {
-      window.notifyIncomingMessage(payload);
-    }
-
-    const conversationId = payload?.conversation_id || payload?.conversationId;
-    const currentUserId = getCurrentSessionUserId();
-    const senderId = payload?.sender_id || null;
-
-    if (
-      conversationId &&
-      payload?.id &&
-      senderId &&
-      senderId !== currentUserId &&
-      isConversationCurrentlyVisibleOnScreen(conversationId)
-    ) {
-      emitSocketEvent('message:read', {
-        conversationId,
-        messageIds: [payload.id]
-      });
-    }
-
-    if (typeof window.handleIncomingSocketMessage === 'function') {
-      window.handleIncomingSocketMessage(payload);
-    }
+    enqueueInboundMessagePayload(payload);
   });
 
   window.appSocket.on('message:typing', (payload) => {

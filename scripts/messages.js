@@ -549,25 +549,31 @@ function compareMessageRowsChronologically(a, b) {
   return 0;
 }
 
-function enforceStrictMessageOrder() {
+function insertOrRepositionMessageRowChronologically(row) {
   const container = document.getElementById('messages-container');
-  if (!container) return;
+  if (!container || !row) return;
 
   const typingRow = document.getElementById('remote-typing-row');
-  const rows = [...container.querySelectorAll('.msg-row')].filter((row) => row !== typingRow);
-  if (rows.length < 2) return;
+  const candidateRows = [...container.querySelectorAll('.msg-row')].filter(
+    (candidate) => candidate !== row && candidate !== typingRow
+  );
 
-  rows.sort(compareMessageRowsChronologically);
-  rows.forEach((row) => {
-    container.appendChild(row);
-  });
-
-  if (typingRow) {
-    container.appendChild(typingRow);
+  let inserted = false;
+  for (const candidate of candidateRows) {
+    if (compareMessageRowsChronologically(row, candidate) < 0) {
+      container.insertBefore(row, candidate);
+      inserted = true;
+      break;
+    }
   }
 
-  recomputeOutgoingStatusVisibility();
-  refreshIncomingMessageJumpPillVisibility();
+  if (!inserted) {
+    if (typingRow && typingRow.parentNode === container) {
+      container.insertBefore(row, typingRow);
+    } else {
+      container.appendChild(row);
+    }
+  }
 }
 
 function clearSelectedMessageState() {
@@ -661,7 +667,8 @@ function updateMessageDeliveryStatusByClientId(clientMessageId, status, messageI
   }
 
   setMessageRowDeliveryStatus(row, status);
-  enforceStrictMessageOrder();
+  insertOrRepositionMessageRowChronologically(row);
+  refreshIncomingMessageJumpPillVisibility();
 
   if ((status === 'Delivered' || status === 'Seen') && typeof window.removePendingMediaEntry === 'function') {
     window.removePendingMediaEntry(clientMessageId);
@@ -831,6 +838,9 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
 
   const row = document.createElement('div');
   row.className = 'msg-row' + (isMe ? ' me' : '');
+  if (window.__zapBulkConversationRender) {
+    row.classList.add('no-anim');
+  }
   if (clientMessageId) {
     row.dataset.clientMessageId = clientMessageId;
   }
@@ -882,7 +892,7 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
     }
   }
 
-  container.appendChild(row);
+  insertOrRepositionMessageRowChronologically(row);
   if (isVoice) {
     const wvId = row.querySelector('.voice-waveform')?.id;
     if (wvId) buildWaveform(wvId, 24);
@@ -899,8 +909,6 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
   if (isMe && meta.messageId) {
     maybeApplyPendingSeenForRow(row);
   }
-
-  enforceStrictMessageOrder();
 
   return row;
 }
@@ -1031,6 +1039,8 @@ function renderConversationMessages(messages) {
     return String(a.id || '').localeCompare(String(b.id || ''));
   });
 
+  window.__zapBulkConversationRender = true;
+
   ordered.forEach((message) => {
     const senderId = message.sender_id || message.sender?.id;
     const isMe = Boolean(currentUserId && senderId === currentUserId);
@@ -1054,6 +1064,8 @@ function renderConversationMessages(messages) {
       }
     );
   });
+
+  window.__zapBulkConversationRender = false;
 
   renderPersistedPendingMediaMessages(activeConversationId);
 
