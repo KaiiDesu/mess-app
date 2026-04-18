@@ -4,6 +4,7 @@ window.remoteTypingHideTimeout = window.remoteTypingHideTimeout || null;
 window.selectedMessageRow = window.selectedMessageRow || null;
 window.latestOffscreenIncomingMessageId = window.latestOffscreenIncomingMessageId || null;
 window.activeReactionMessageId = window.activeReactionMessageId || null;
+window.activeMessageActionId = window.activeMessageActionId || null;
 window.pendingIncomingMessagesDuringLoad = window.pendingIncomingMessagesDuringLoad || [];
 window.pendingSeenMessageIds = window.pendingSeenMessageIds || new Set();
 
@@ -13,6 +14,14 @@ const REACTION_PICKER_EMOJIS = ['❤️', '😂', '😮', '😢', '👍', '🔥'
 
 function getReactionPickerElement() {
   return document.getElementById('reaction-picker');
+}
+
+function getMessageActionSheetElement() {
+  return document.getElementById('message-action-sheet');
+}
+
+function getMessageActionBackdropElement() {
+  return document.getElementById('message-action-backdrop');
 }
 
 function getReactionUserId() {
@@ -136,6 +145,8 @@ function hideReactionPicker() {
   if (!picker) return;
 
   picker.classList.remove('show');
+  picker.style.left = '';
+  picker.style.top = '';
   window.activeReactionMessageId = null;
   picker.querySelectorAll('.reaction-emoji').forEach((node) => node.classList.remove('is-selected'));
 }
@@ -153,11 +164,129 @@ function updateReactionPickerSelectionState() {
   });
 }
 
+function positionReactionPickerAboveMessageRow(row) {
+  const picker = getReactionPickerElement();
+  const bubble = row?.querySelector('.bubble');
+  if (!picker || !bubble) return;
+
+  const wasVisible = picker.classList.contains('show');
+  if (!wasVisible) {
+    picker.style.visibility = 'hidden';
+    picker.classList.add('show');
+  }
+
+  const viewportPadding = 12;
+  const bubbleRect = bubble.getBoundingClientRect();
+  const pickerRect = picker.getBoundingClientRect();
+
+  let targetLeft = bubbleRect.left + (bubbleRect.width / 2) - (pickerRect.width / 2);
+  targetLeft = Math.max(viewportPadding, Math.min(targetLeft, window.innerWidth - pickerRect.width - viewportPadding));
+
+  let targetTop = bubbleRect.top - pickerRect.height - 10;
+  if (targetTop < viewportPadding) {
+    targetTop = bubbleRect.bottom + 10;
+  }
+
+  picker.style.left = `${Math.round(targetLeft)}px`;
+  picker.style.top = `${Math.round(targetTop)}px`;
+
+  if (!wasVisible) {
+    picker.classList.remove('show');
+    picker.style.visibility = '';
+  }
+}
+
+function showMessageActionSheetForRow(row) {
+  const messageId = row?.dataset?.messageId;
+  const sheet = getMessageActionSheetElement();
+  const backdrop = getMessageActionBackdropElement();
+  if (!messageId || !sheet || !backdrop) return;
+
+  window.activeMessageActionId = messageId;
+  row.classList.add('message-dimmed');
+
+  const deleteButton = sheet.querySelector('.message-action-btn.danger');
+  if (deleteButton) {
+    deleteButton.disabled = !row.classList.contains('me');
+  }
+
+  backdrop.classList.add('show');
+  sheet.classList.add('show');
+}
+
+function hideMessageActionSheet() {
+  const sheet = getMessageActionSheetElement();
+  const backdrop = getMessageActionBackdropElement();
+  const row = getMessageRowById(window.activeMessageActionId);
+
+  if (sheet) {
+    sheet.classList.remove('show');
+  }
+  if (backdrop) {
+    backdrop.classList.remove('show');
+  }
+  if (row) {
+    row.classList.remove('message-dimmed');
+  }
+
+  window.activeMessageActionId = null;
+}
+
+async function copySelectedMessageText() {
+  const row = getMessageRowById(window.activeMessageActionId);
+  const bubble = row?.querySelector('.bubble');
+  const messageText = bubble ? String(bubble.textContent || '').trim() : '';
+
+  if (!messageText) {
+    hideMessageActionSheet();
+    hideReactionPicker();
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(messageText);
+    } else {
+      const fallbackInput = document.createElement('textarea');
+      fallbackInput.value = messageText;
+      fallbackInput.style.position = 'fixed';
+      fallbackInput.style.opacity = '0';
+      document.body.appendChild(fallbackInput);
+      fallbackInput.focus();
+      fallbackInput.select();
+      document.execCommand('copy');
+      fallbackInput.remove();
+    }
+  } catch (_) {
+    // Ignore clipboard failures and still close the menu.
+  }
+
+  hideMessageActionSheet();
+  hideReactionPicker();
+}
+
+function deleteSelectedMessage() {
+  const row = getMessageRowById(window.activeMessageActionId);
+  if (!row || !row.classList.contains('me')) {
+    hideMessageActionSheet();
+    hideReactionPicker();
+    return;
+  }
+
+  row.remove();
+  recomputeOutgoingStatusVisibility();
+  refreshIncomingMessageJumpPillVisibility();
+
+  hideMessageActionSheet();
+  hideReactionPicker();
+}
+
 function showReactionPickerForMessageRow(row) {
   const picker = getReactionPickerElement();
   const messageId = row?.dataset?.messageId;
   if (!picker || !messageId) return;
 
+  positionReactionPickerAboveMessageRow(row);
   window.activeReactionMessageId = messageId;
   picker.classList.add('show');
   updateReactionPickerSelectionState();
@@ -166,6 +295,7 @@ function showReactionPickerForMessageRow(row) {
 function addReaction(emoji) {
   const messageId = window.activeReactionMessageId;
   if (!emoji || !messageId) {
+    hideMessageActionSheet();
     hideReactionPicker();
     return;
   }
@@ -173,6 +303,7 @@ function addReaction(emoji) {
   const row = getMessageRowById(messageId);
   const currentUserId = getReactionUserId();
   if (!row || !currentUserId || typeof emitSocketEvent !== 'function') {
+    hideMessageActionSheet();
     hideReactionPicker();
     return;
   }
@@ -181,6 +312,7 @@ function addReaction(emoji) {
   if (existingEmoji === emoji) {
     removeMessageReaction(messageId, currentUserId, emoji);
     emitSocketEvent('message:react_remove', { messageId, emoji });
+    hideMessageActionSheet();
     hideReactionPicker();
     return;
   }
@@ -192,6 +324,7 @@ function addReaction(emoji) {
 
   upsertMessageReaction(messageId, currentUserId, emoji);
   emitSocketEvent('message:react', { messageId, emoji });
+  hideMessageActionSheet();
   hideReactionPicker();
 }
 
@@ -1315,6 +1448,10 @@ window.jumpToLatestIncomingMessage = jumpToLatestIncomingMessage;
 window.showReactionPickerForMessageRow = showReactionPickerForMessageRow;
 window.hideReactionPicker = hideReactionPicker;
 window.updateReactionPickerSelectionState = updateReactionPickerSelectionState;
+window.showMessageActionSheetForRow = showMessageActionSheetForRow;
+window.hideMessageActionSheet = hideMessageActionSheet;
+window.copySelectedMessageText = copySelectedMessageText;
+window.deleteSelectedMessage = deleteSelectedMessage;
 window.addReaction = addReaction;
 window.handleMessageReactionAdded = handleMessageReactionAdded;
 window.handleMessageReactionRemoved = handleMessageReactionRemoved;

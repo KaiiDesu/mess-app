@@ -6,6 +6,8 @@ let pressTimer;
 let lastMessagesScrollTop = 0;
 let isUserScrollingMessages = false;
 let userScrollIntentResetTimer = null;
+let pressStartPoint = null;
+let activePressRow = null;
 
 function markUserScrollIntent() {
   isUserScrollingMessages = true;
@@ -35,20 +37,61 @@ document.addEventListener('DOMContentLoaded', () => {
     const row = bubble?.closest('.msg-row[data-message-id]');
     if (!row) return;
 
+    activePressRow = row;
+    const pointer = event.touches?.[0] || event;
+    pressStartPoint = {
+      x: Number(pointer?.clientX || 0),
+      y: Number(pointer?.clientY || 0)
+    };
+
     pressTimer = setTimeout(() => {
       if (typeof window.showReactionPickerForMessageRow === 'function') {
         window.showReactionPickerForMessageRow(row);
       }
+
+      if (typeof window.showMessageActionSheetForRow === 'function') {
+        window.showMessageActionSheetForRow(row);
+      }
+
+      if (navigator.vibrate) {
+        navigator.vibrate(20);
+      }
     }, 500);
+  };
+
+  const cancelReactionPickerPress = () => {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+    pressStartPoint = null;
+    activePressRow = null;
+  };
+
+  const maybeCancelPressOnMove = (event) => {
+    markUserScrollIntent();
+    if (!pressStartPoint || !activePressRow) return;
+
+    const pointer = event.touches?.[0] || event;
+    const currentX = Number(pointer?.clientX || 0);
+    const currentY = Number(pointer?.clientY || 0);
+    const dx = Math.abs(currentX - pressStartPoint.x);
+    const dy = Math.abs(currentY - pressStartPoint.y);
+
+    if (dx > 10 || dy > 10) {
+      cancelReactionPickerPress();
+    }
   };
 
   messagesContainer.addEventListener('touchstart', e => {
     markUserScrollIntent();
     beginReactionPickerPress(e);
   });
-  messagesContainer.addEventListener('touchmove', () => markUserScrollIntent(), { passive: true });
+  messagesContainer.addEventListener('touchmove', (e) => maybeCancelPressOnMove(e), { passive: true });
   messagesContainer.addEventListener('touchend', () => {
-    clearTimeout(pressTimer);
+    cancelReactionPickerPress();
+    clearUserScrollIntent();
+  });
+  messagesContainer.addEventListener('touchcancel', () => {
+    cancelReactionPickerPress();
     clearUserScrollIntent();
   });
 
@@ -56,17 +99,24 @@ document.addEventListener('DOMContentLoaded', () => {
     markUserScrollIntent();
     beginReactionPickerPress(e);
   });
-  messagesContainer.addEventListener('mousemove', () => markUserScrollIntent());
+  messagesContainer.addEventListener('mousemove', (e) => maybeCancelPressOnMove(e));
   messagesContainer.addEventListener('mouseup', () => {
-    clearTimeout(pressTimer);
+    cancelReactionPickerPress();
+    clearUserScrollIntent();
+  });
+  messagesContainer.addEventListener('mouseleave', () => {
+    cancelReactionPickerPress();
     clearUserScrollIntent();
   });
   messagesContainer.addEventListener('contextmenu', (event) => {
-    if (event.target.closest('.bubble, .reaction-picker, .reaction, .reaction-emoji')) {
+    if (event.target.closest('.bubble, .reaction-picker, .reaction, .reaction-emoji, .message-action-sheet')) {
       event.preventDefault();
     }
   });
-  messagesContainer.addEventListener('wheel', () => markUserScrollIntent(), { passive: true });
+  messagesContainer.addEventListener('wheel', () => {
+    markUserScrollIntent();
+    cancelReactionPickerPress();
+  }, { passive: true });
 
   if (sendBtn && msgInput) {
     // Prevent pointer down on send button from blurring the textarea on mobile.
@@ -115,11 +165,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('click', e => {
-  if (!e.target.closest('.reaction-picker') && !e.target.closest('.bubble')) {
+  if (!e.target.closest('.reaction-picker') && !e.target.closest('.bubble') && !e.target.closest('.message-action-sheet')) {
     if (typeof window.hideReactionPicker === 'function') {
       window.hideReactionPicker();
     } else {
       document.getElementById('reaction-picker').classList.remove('show');
+    }
+
+    if (typeof window.hideMessageActionSheet === 'function') {
+      window.hideMessageActionSheet();
     }
   }
 
