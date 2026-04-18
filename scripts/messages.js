@@ -425,10 +425,6 @@ function scrollToReplyParentMessage(messageId) {
   if (!row) return;
 
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  row.classList.add('reply-jump-highlight');
-  setTimeout(() => {
-    row.classList.remove('reply-jump-highlight');
-  }, 1200);
 }
 
 async function jumpToRepliedMessage(messageId) {
