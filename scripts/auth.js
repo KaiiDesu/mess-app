@@ -4,7 +4,7 @@ function getApiBaseUrl() {
 
 let serverDownRetryTimer = null;
 let serverDownRetryInFlight = false;
-let serverDownWasActive = false;
+let serverDownInitialRetryTimer = null;
 
 function showServerRecoveryNotice() {
   const message = 'You were automatically logged out by session. The server is back online.';
@@ -21,6 +21,11 @@ function showServerRecoveryNotice() {
 }
 
 function stopServerDownAutoRetry() {
+  if (serverDownInitialRetryTimer) {
+    clearTimeout(serverDownInitialRetryTimer);
+    serverDownInitialRetryTimer = null;
+  }
+
   if (!serverDownRetryTimer) return;
   clearInterval(serverDownRetryTimer);
   serverDownRetryTimer = null;
@@ -59,9 +64,9 @@ function handleServerRecovered() {
 }
 
 function startServerDownAutoRetry() {
-  if (serverDownRetryTimer) return;
+  if (serverDownRetryTimer || serverDownInitialRetryTimer) return;
 
-  serverDownRetryTimer = setInterval(async () => {
+  const tryRecover = async () => {
     if (serverDownRetryInFlight) return;
     serverDownRetryInFlight = true;
 
@@ -73,21 +78,35 @@ function startServerDownAutoRetry() {
     } finally {
       serverDownRetryInFlight = false;
     }
-  }, 12000);
+  };
+
+  // Quick first probe so users do not wait for the long interval when Render wakes up.
+  serverDownInitialRetryTimer = setTimeout(async () => {
+    serverDownInitialRetryTimer = null;
+    await tryRecover();
+  }, 1500);
+
+  serverDownRetryTimer = setInterval(tryRecover, 12000);
 }
 
 function setServerDownOverlayVisible(isVisible) {
+  if (!isVisible) {
+    stopServerDownAutoRetry();
+  }
+
   const overlay = document.getElementById('server-down-overlay');
-  if (!overlay) return;
+  if (!overlay) {
+    if (isVisible) {
+      startServerDownAutoRetry();
+    }
+    return;
+  }
 
   overlay.classList.toggle('show', Boolean(isVisible));
   overlay.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
 
   if (isVisible) {
-    serverDownWasActive = true;
     startServerDownAutoRetry();
-  } else {
-    stopServerDownAutoRetry();
   }
 }
 
@@ -97,17 +116,24 @@ function isServerDownResponse(response) {
 }
 
 async function checkServerAvailability(token) {
+  const healthReachable = await pingServerHealth();
+  if (!healthReachable) {
+    return { reachable: false, unauthorized: false };
+  }
+
+  if (!token) {
+    return { reachable: true, unauthorized: false };
+  }
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 7000);
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/conversations?limit=1`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/users/me`, {
       method: 'GET',
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`
-          }
-        : {},
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       signal: controller.signal
     });
 
@@ -451,6 +477,17 @@ document.addEventListener('DOMContentLoaded', () => {
   if (rememberToggle) {
     rememberToggle.checked = readRememberPreference();
   }
+
+  const nudgeServerRecoveryCheck = () => {
+    const overlay = document.getElementById('server-down-overlay');
+    if (overlay?.classList.contains('show')) {
+      stopServerDownAutoRetry();
+      startServerDownAutoRetry();
+    }
+  };
+
+  window.addEventListener('online', nudgeServerRecoveryCheck);
+  window.addEventListener('focus', nudgeServerRecoveryCheck);
 
   bootstrapSessionOnLaunch();
 });
