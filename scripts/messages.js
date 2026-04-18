@@ -44,6 +44,24 @@ function normalizeMessageUrl(value) {
   }
 }
 
+function getDisplayLabelForMessageUrl(url, fallbackText = '') {
+  const normalized = normalizeMessageUrl(url);
+  if (!normalized) {
+    const raw = String(fallbackText || '').trim();
+    return raw.length > 56 ? `${raw.slice(0, 56)}...` : raw;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.replace(/^www\./i, '');
+    const path = parsed.pathname === '/' ? '' : parsed.pathname;
+    const compact = `${host}${path}`;
+    return compact.length > 56 ? `${compact.slice(0, 56)}...` : compact;
+  } catch (_) {
+    return normalized.length > 56 ? `${normalized.slice(0, 56)}...` : normalized;
+  }
+}
+
 function extractMessageUrls(text) {
   const input = String(text || '');
   const rawMatches = input.match(MESSAGE_URL_PATTERN) || [];
@@ -82,7 +100,8 @@ function renderLinkedMessageTextHtml(text) {
     html += escapeHtml(input.slice(cursor, start));
 
     if (normalized) {
-      html += `<a class="message-link" href="${escapeHtml(normalized)}" data-url="${escapeHtml(normalized)}" target="_blank" rel="noopener noreferrer">${escapeHtml(rawMatch)}</a>`;
+      const label = getDisplayLabelForMessageUrl(normalized, rawMatch);
+      html += `<a class="message-link" href="${escapeHtml(normalized)}" data-url="${escapeHtml(normalized)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
     } else {
       html += escapeHtml(rawMatch);
     }
