@@ -749,11 +749,14 @@ function upsertConversationFromIncomingMessage(payload) {
   };
   existing.updated_at = payload.created_at || new Date().toISOString();
 
-  if (!isFromCurrentUser && window.activeConversationId !== conversationId) {
+  const isViewingThisConversation =
+    currentView === 'view-chat' && window.activeConversationId === conversationId;
+
+  if (!isFromCurrentUser && !isViewingThisConversation) {
     existing.unreadCount = Number(existing.unreadCount || 0) + 1;
   }
 
-  if (window.activeConversationId === conversationId) {
+  if (isViewingThisConversation) {
     existing.unreadCount = 0;
   }
 
