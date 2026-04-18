@@ -47,6 +47,7 @@ app.use('/api/users', authMiddleware.verifyToken, require('./routes/users'));
 app.use('/api/conversations', authMiddleware.verifyToken, require('./routes/conversations'));
 app.use('/api/media', authMiddleware.verifyToken, require('./routes/media'));
 app.use('/api/friendships', authMiddleware.verifyToken, require('./routes/friendships'));
+app.use('/api/link-preview', authMiddleware.verifyToken, require('./routes/link-preview'));
 
 // Socket.io setup
 initializeSocket(io, authMiddleware);

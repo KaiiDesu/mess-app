@@ -11,6 +11,277 @@ window.pendingSeenMessageIds = window.pendingSeenMessageIds || new Set();
 let lastTypingEmitAt = 0;
 let hasActiveTypingSignal = false;
 const REACTION_PICKER_EMOJIS = ['❤️', '😂', '😮', '😢', '👍', '🔥'];
+const MESSAGE_URL_PATTERN = /\bhttps?:\/\/[^\s<>"]+/gi;
+const LINK_PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const linkPreviewCache = new Map();
+const linkPreviewRequestByUrl = new Map();
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function trimTrailingUrlPunctuation(value) {
+  return String(value || '').replace(/[),.!?;:]+$/g, '');
+}
+
+function normalizeMessageUrl(value) {
+  if (!value) return '';
+  try {
+    const parsed = new URL(String(value).trim());
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== 'http:' && protocol !== 'https:') return '';
+    return parsed.toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+function extractMessageUrls(text) {
+  const input = String(text || '');
+  const rawMatches = input.match(MESSAGE_URL_PATTERN) || [];
+  const unique = [];
+  const seen = new Set();
+
+  rawMatches.forEach((rawUrl) => {
+    const normalized = normalizeMessageUrl(trimTrailingUrlPunctuation(rawUrl));
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    unique.push(normalized);
+  });
+
+  return unique;
+}
+
+function getPrimaryMessageUrl(text) {
+  return extractMessageUrls(text)[0] || '';
+}
+
+function renderLinkedMessageTextHtml(text) {
+  const input = String(text || '');
+  if (!input) return '';
+
+  const pattern = new RegExp(MESSAGE_URL_PATTERN.source, 'gi');
+  let html = '';
+  let cursor = 0;
+  let match;
+
+  while ((match = pattern.exec(input)) !== null) {
+    const rawMatch = match[0] || '';
+    const normalized = normalizeMessageUrl(trimTrailingUrlPunctuation(rawMatch));
+    const start = match.index;
+    const end = start + rawMatch.length;
+
+    html += escapeHtml(input.slice(cursor, start));
+
+    if (normalized) {
+      html += `<a class="message-link" href="${escapeHtml(normalized)}" data-url="${escapeHtml(normalized)}" target="_blank" rel="noopener noreferrer">${escapeHtml(rawMatch)}</a>`;
+    } else {
+      html += escapeHtml(rawMatch);
+    }
+
+    cursor = end;
+  }
+
+  html += escapeHtml(input.slice(cursor));
+  return html;
+}
+
+function buildTextMessageMarkup(text) {
+  const bodyHtml = renderLinkedMessageTextHtml(text);
+  const primaryUrl = getPrimaryMessageUrl(text);
+
+  if (!primaryUrl) {
+    return bodyHtml;
+  }
+
+  return `${bodyHtml}<button type="button" class="message-link-preview is-loading" data-url="${escapeHtml(primaryUrl)}" aria-label="Open link preview"><div class="message-link-preview-image-wrap"></div><div class="message-link-preview-body"><div class="message-link-preview-site">Preview</div><div class="message-link-preview-title">Loading link preview...</div><div class="message-link-preview-desc"></div></div></button>`;
+}
+
+function openMessageUrl(url) {
+  const normalized = normalizeMessageUrl(url);
+  if (!normalized) return;
+
+  const nativeBrowser = window.Capacitor?.Plugins?.Browser;
+  if (isNativeCapacitorRuntime() && nativeBrowser?.open) {
+    nativeBrowser.open({ url: normalized }).catch(() => {
+      window.open(normalized, '_blank', 'noopener');
+    });
+    return;
+  }
+
+  window.open(normalized, '_blank', 'noopener');
+}
+
+function getCachedLinkPreview(url) {
+  const cached = linkPreviewCache.get(url);
+  if (!cached) return null;
+
+  if (Date.now() - cached.timestamp > LINK_PREVIEW_CACHE_TTL_MS) {
+    linkPreviewCache.delete(url);
+    return null;
+  }
+
+  return cached.value || null;
+}
+
+function cacheLinkPreview(url, value) {
+  if (!url || !value) return;
+  linkPreviewCache.set(url, {
+    value,
+    timestamp: Date.now()
+  });
+}
+
+function fallbackLinkPreviewFromUrl(url) {
+  const normalized = normalizeMessageUrl(url);
+  if (!normalized) return null;
+
+  try {
+    const parsed = new URL(normalized);
+    return {
+      url: normalized,
+      siteName: parsed.hostname.replace(/^www\./i, ''),
+      title: parsed.hostname,
+      description: '',
+      image: ''
+    };
+  } catch (_) {
+    return {
+      url: normalized,
+      siteName: 'Link',
+      title: normalized,
+      description: '',
+      image: ''
+    };
+  }
+}
+
+async function fetchLinkPreviewFromApi(url) {
+  const normalized = normalizeMessageUrl(url);
+  const token = getAuthTokenForMessages();
+  if (!normalized || !token) {
+    return fallbackLinkPreviewFromUrl(url);
+  }
+
+  try {
+    const response = await fetch(
+      `${getApiBaseUrlForMessages()}/api/link-preview?url=${encodeURIComponent(normalized)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      return fallbackLinkPreviewFromUrl(normalized);
+    }
+
+    const payload = await response.json();
+    const preview = {
+      url: normalizeMessageUrl(payload?.url || normalized) || normalized,
+      siteName: String(payload?.siteName || '').trim(),
+      title: String(payload?.title || '').trim(),
+      description: String(payload?.description || '').trim(),
+      image: normalizeMessageUrl(payload?.image || '')
+    };
+
+    return preview;
+  } catch (_) {
+    return fallbackLinkPreviewFromUrl(normalized);
+  }
+}
+
+function getOrRequestLinkPreview(url) {
+  const normalized = normalizeMessageUrl(url);
+  if (!normalized) {
+    return Promise.resolve(null);
+  }
+
+  const cached = getCachedLinkPreview(normalized);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
+  if (linkPreviewRequestByUrl.has(normalized)) {
+    return linkPreviewRequestByUrl.get(normalized);
+  }
+
+  const request = fetchLinkPreviewFromApi(normalized)
+    .then((preview) => {
+      if (preview) {
+        cacheLinkPreview(normalized, preview);
+      }
+      return preview;
+    })
+    .finally(() => {
+      linkPreviewRequestByUrl.delete(normalized);
+    });
+
+  linkPreviewRequestByUrl.set(normalized, request);
+  return request;
+}
+
+function applyLinkPreviewCard(card, preview) {
+  if (!card || !preview) return;
+
+  const siteNode = card.querySelector('.message-link-preview-site');
+  const titleNode = card.querySelector('.message-link-preview-title');
+  const descNode = card.querySelector('.message-link-preview-desc');
+  const imageWrap = card.querySelector('.message-link-preview-image-wrap');
+
+  if (siteNode) {
+    siteNode.textContent = preview.siteName || 'Link';
+  }
+  if (titleNode) {
+    titleNode.textContent = preview.title || preview.url;
+  }
+  if (descNode) {
+    descNode.textContent = preview.description || '';
+  }
+
+  if (imageWrap) {
+    imageWrap.innerHTML = '';
+    if (preview.image) {
+      const image = document.createElement('img');
+      image.className = 'message-link-preview-image';
+      image.alt = preview.title || 'Link preview image';
+      image.src = preview.image;
+      image.loading = 'lazy';
+      imageWrap.appendChild(image);
+      card.classList.add('has-image');
+    } else {
+      card.classList.remove('has-image');
+    }
+  }
+
+  card.classList.remove('is-loading');
+}
+
+function hydrateMessageLinkPreview(row) {
+  const card = row?.querySelector('.message-link-preview[data-url]');
+  if (!card) return;
+
+  const url = card.dataset.url;
+  if (!url) return;
+
+  getOrRequestLinkPreview(url)
+    .then((preview) => {
+      if (!preview || !document.body.contains(card)) return;
+      applyLinkPreviewCard(card, preview);
+    })
+    .catch(() => {
+      if (!document.body.contains(card)) return;
+      card.classList.remove('is-loading');
+    });
+}
 
 function getReactionPickerElement() {
   return document.getElementById('reaction-picker');
@@ -1044,6 +1315,7 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
   const contentType = meta.contentType || (isVoice ? 'audio' : 'text');
   const mediaUrl = meta.mediaUrl || text;
   const showVideoLoading = Boolean(meta.showVideoLoading && isMe && contentType === 'video');
+  const textMarkup = buildTextMessageMarkup(text);
 
   if (isMe && deliveryStatus) {
     row.dataset.deliveryStatus = deliveryStatus;
@@ -1058,7 +1330,7 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
     } else if (contentType === 'video') {
       row.innerHTML = `<div class="msg-avatar">😄</div><div><div class="bubble them media-bubble" style="padding:0" data-media-type="video" data-media-url="${mediaUrl}"><video src="${mediaUrl}" preload="metadata"></video><div class="media-overlay"></div><button class="play-btn video-inline-play" type="button" aria-label="Play video"><svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:#fff"><polygon points="8 5 19 12 8 19 8 5"></polygon></svg></button></div></div>`;
     } else {
-      row.innerHTML = `<div class="msg-avatar">😄</div><div><div class="bubble them">${text}</div></div>`;
+      row.innerHTML = `<div class="msg-avatar">😄</div><div><div class="bubble them">${textMarkup}</div></div>`;
     }
   } else if (isVoice) {
     const dur = recordingSeconds || 3;
@@ -1076,7 +1348,7 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
         : '<div class="video-pending-surface"><svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:rgba(255,255,255,0.86);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polygon points="8 5 19 12 8 19 8 5"></polygon></svg><span>Sending video...</span></div>';
       row.innerHTML = `<div><div class="bubble me media-bubble${showVideoLoading ? ' is-pending' : ''}" style="padding:0" data-media-type="video" data-media-url="${mediaUrl}">${videoSurface}<div class="media-overlay"></div>${pendingOverlay}</div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
     } else {
-      row.innerHTML = `<div><div class="bubble me">${text}</div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
+      row.innerHTML = `<div><div class="bubble me">${textMarkup}</div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
     }
   }
 
@@ -1096,6 +1368,10 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
 
   if (isMe && meta.messageId) {
     maybeApplyPendingSeenForRow(row);
+  }
+
+  if (contentType === 'text') {
+    hydrateMessageLinkPreview(row);
   }
 
   return row;
@@ -1456,6 +1732,14 @@ function hideRemoteTypingIndicator(payload) {
 }
 
 document.addEventListener('click', (event) => {
+  const linkTarget = event.target.closest('.message-link, .message-link-preview');
+  if (linkTarget) {
+    event.preventDefault();
+    event.stopPropagation();
+    openMessageUrl(linkTarget.dataset.url || linkTarget.getAttribute('href'));
+    return;
+  }
+
   const bubble = event.target.closest('.bubble');
   const container = document.getElementById('messages-container');
 

@@ -33,6 +33,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const sendBtn = document.getElementById('send-btn');
 
   const beginReactionPickerPress = (event) => {
+    if (event.target.closest('.message-link, .message-link-preview')) {
+      return;
+    }
+
     const bubble = event.target.closest('.bubble');
     const row = bubble?.closest('.msg-row[data-message-id]');
     if (!row) return;

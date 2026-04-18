@@ -148,6 +148,74 @@
   .bubble.me { background:var(--bubble-me); color:#fff; border-bottom-right-radius:5px; }
   .bubble.them { background:var(--bg3); color:var(--text); border-bottom-left-radius:5px; border:1px solid var(--border2); }
   .bubble.themed-bubble { background:var(--theme-bubble, var(--bg3)); }
+  .message-link {
+    color:#8fd9ff;
+    text-decoration:underline;
+    text-decoration-thickness:1px;
+    text-underline-offset:2px;
+    cursor:pointer;
+  }
+  .bubble.them .message-link {
+    color:#5ec5ff;
+  }
+  .message-link-preview {
+    margin-top:8px;
+    width:100%;
+    border:1px solid rgba(255,255,255,0.14);
+    border-radius:12px;
+    background:rgba(8, 12, 22, 0.28);
+    padding:0;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    text-align:left;
+    cursor:pointer;
+  }
+  .bubble.them .message-link-preview {
+    background:rgba(8, 12, 22, 0.12);
+  }
+  .message-link-preview-image-wrap {
+    display:none;
+    width:100%;
+    min-height:120px;
+    max-height:168px;
+    background:rgba(255,255,255,0.08);
+  }
+  .message-link-preview.has-image .message-link-preview-image-wrap {
+    display:block;
+  }
+  .message-link-preview-image {
+    width:100%;
+    height:100%;
+    max-height:168px;
+    object-fit:cover;
+    display:block;
+  }
+  .message-link-preview-body {
+    padding:10px;
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+  }
+  .message-link-preview-site {
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    opacity:0.72;
+  }
+  .message-link-preview-title {
+    font-size:12px;
+    font-weight:600;
+    line-height:1.35;
+  }
+  .message-link-preview-desc {
+    font-size:11px;
+    line-height:1.35;
+    opacity:0.82;
+  }
+  .message-link-preview.is-loading .message-link-preview-title {
+    opacity:0.72;
+  }
   .msg-time { font-size:10px; color:rgba(255,255,255,0.55); margin-top:4px; text-align:right; }
   .bubble.them .msg-time { color:var(--text3); }
   .message-dimmed .bubble { opacity:0.55; filter:brightness(0.78); }
