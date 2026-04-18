@@ -115,6 +115,31 @@ function emitPresenceNetworkState() {
   });
 }
 
+let presenceHeartbeatTimer = null;
+
+function emitPresenceHeartbeat() {
+  if (!window.appSocket || !window.appSocket.connected) return;
+  window.appSocket.emit('presence:heartbeat', {
+    foreground: isAppForeground(),
+    networkOnline: navigator.onLine !== false
+  });
+}
+
+function startPresenceHeartbeat() {
+  if (presenceHeartbeatTimer) return;
+
+  emitPresenceHeartbeat();
+  presenceHeartbeatTimer = setInterval(() => {
+    emitPresenceHeartbeat();
+  }, 15000);
+}
+
+function stopPresenceHeartbeat() {
+  if (!presenceHeartbeatTimer) return;
+  clearInterval(presenceHeartbeatTimer);
+  presenceHeartbeatTimer = null;
+}
+
 function ensureAppForegroundTracking() {
   if (window.__zapForegroundTrackingInitialized) return;
   window.__zapForegroundTrackingInitialized = true;
@@ -126,6 +151,7 @@ function ensureAppForegroundTracking() {
     const visible = document.visibilityState === 'visible';
     setAppForeground(visible);
     emitPresenceAppState();
+    emitPresenceHeartbeat();
     if (!visible) {
       setReadReceiptsEnabled(false);
     }
@@ -135,39 +161,47 @@ function ensureAppForegroundTracking() {
   window.addEventListener('focus', () => {
     setAppForeground(true);
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
   window.addEventListener('blur', () => {
     setAppForeground(false);
     setReadReceiptsEnabled(false);
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
   window.addEventListener('pageshow', () => {
     setAppForeground(true);
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
   window.addEventListener('pagehide', () => {
     setAppForeground(false);
     setReadReceiptsEnabled(false);
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
 
   document.addEventListener('resume', () => {
     setAppForeground(true);
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
   document.addEventListener('pause', () => {
     setAppForeground(false);
     setReadReceiptsEnabled(false);
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
 
   window.addEventListener('online', () => {
     emitPresenceNetworkState();
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
   window.addEventListener('offline', () => {
     emitPresenceNetworkState();
     emitPresenceAppState();
+    emitPresenceHeartbeat();
   });
 
   const enableOnInteraction = () => {
@@ -853,6 +887,7 @@ function initSocket() {
     loadConversations();
     emitPresenceNetworkState();
     emitPresenceAppState();
+    startPresenceHeartbeat();
   });
 
   window.appSocket.on('connect_error', (err) => {
@@ -864,6 +899,7 @@ function initSocket() {
 
   window.appSocket.on('disconnect', (reason) => {
     console.log('[socket] disconnected:', reason);
+    stopPresenceHeartbeat();
   });
 
   window.appSocket.on('message:received', (payload) => {

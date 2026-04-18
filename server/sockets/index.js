@@ -40,6 +40,9 @@ const initializeSocket = (io, authMiddleware) => {
     socket.on('presence:network_state', (data) =>
       presenceSocket.handleNetworkStateUpdate(socket, data, userId)
     );
+    socket.on('presence:heartbeat', (data) =>
+      presenceSocket.handleHeartbeat(socket, data, userId)
+    );
 
     // Friendship handlers
     socket.on('friendship:request_send', (data) =>
