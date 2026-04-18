@@ -144,12 +144,23 @@ const getConversations = async (req, res) => {
           (a, b) => new Date(b.created_at) - new Date(a.created_at)
         );
         const lastMessage = sortedMessages[0] || null;
-        const lastMessageWithSeenState = lastMessage
-          ? {
-              ...lastMessage,
-              is_seen_by_other: false
-            }
-          : null;
+        let lastMessageWithSeenState = null;
+        if (lastMessage) {
+          const { data: lastMessageReceipts, error: lastMessageReceiptsError } = await supabase
+            .from('message_read_receipts')
+            .select('reader_id')
+            .eq('message_id', lastMessage.id);
+
+          const isSeenByOther =
+            !lastMessageReceiptsError &&
+            Array.isArray(lastMessageReceipts) &&
+            lastMessageReceipts.some((receipt) => receipt.reader_id && receipt.reader_id !== userId);
+
+          lastMessageWithSeenState = {
+            ...lastMessage,
+            is_seen_by_other: isSeenByOther
+          };
+        }
 
         const hiddenForUser = Boolean(clearTimestamp && !lastMessage);
 

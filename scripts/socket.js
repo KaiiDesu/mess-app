@@ -1046,7 +1046,16 @@ function initSocket() {
     if (!isConversationCurrentlyVisibleOnScreen(conversationId)) return;
 
     try {
+      if (typeof loadConversations === 'function') {
+        await loadConversations();
+      }
+
       const messages = await fetchConversationMessages(conversationId);
+      if (typeof window.renderConversationMessages === 'function') {
+        window.renderConversationMessages(messages);
+      }
+
+      syncConversationLastMessageSeenStateFromMessages(conversationId, messages);
       markMessagesAsRead(conversationId, messages);
     } catch (_) {
       // Ignore transient fetch errors during app focus transitions.
