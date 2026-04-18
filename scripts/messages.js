@@ -424,7 +424,22 @@ function scrollToReplyParentMessage(messageId) {
   const row = getMessageRowById(messageId);
   if (!row) return;
 
-  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Only scroll if target is currently outside the viewport to avoid jarring jumps.
+  if (!isMessageRowVisibleOnScreen(row)) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  row.classList.remove('reply-jump-highlight');
+  void row.offsetWidth;
+  row.classList.add('reply-jump-highlight');
+
+  if (window.__zapReplyJumpHighlightTimer) {
+    clearTimeout(window.__zapReplyJumpHighlightTimer);
+  }
+  window.__zapReplyJumpHighlightTimer = setTimeout(() => {
+    row.classList.remove('reply-jump-highlight');
+    window.__zapReplyJumpHighlightTimer = null;
+  }, 900);
 }
 
 async function jumpToRepliedMessage(messageId) {
