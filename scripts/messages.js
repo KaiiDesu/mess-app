@@ -5,6 +5,8 @@ window.selectedMessageRow = window.selectedMessageRow || null;
 window.latestOffscreenIncomingMessageId = window.latestOffscreenIncomingMessageId || null;
 window.activeReactionMessageId = window.activeReactionMessageId || null;
 window.activeMessageActionId = window.activeMessageActionId || null;
+window.replyingToMessageId = window.replyingToMessageId || null;
+window.replyingToMessageContext = window.replyingToMessageContext || null;
 window.pendingIncomingMessagesDuringLoad = window.pendingIncomingMessagesDuringLoad || [];
 window.pendingSeenMessageIds = window.pendingSeenMessageIds || new Set();
 
@@ -322,6 +324,134 @@ function getReactionUserId() {
 function getMessageRowById(messageId) {
   if (!messageId) return null;
   return document.querySelector(`.msg-row[data-message-id="${messageId}"]`);
+}
+
+function getMessageContentHostNode(row) {
+  if (!row) return null;
+  return [...row.children].find((child) => !child.classList.contains('msg-avatar')) || null;
+}
+
+function getReplySnippetForMessage(row) {
+  if (!row) return '';
+
+  const bubble = row.querySelector('.bubble');
+  if (!bubble) return '';
+
+  if (bubble.matches('.media-bubble[data-media-type="image"]')) return 'Photo';
+  if (bubble.matches('.media-bubble[data-media-type="video"]')) return 'Video';
+  if (bubble.classList.contains('voice-bubble')) return 'Voice message';
+
+  const text = String(bubble.textContent || '').replace(/\s+/g, ' ').trim();
+  if (!text) return 'Message';
+  return text.length > 80 ? `${text.slice(0, 80)}...` : text;
+}
+
+function getReplySenderLabelForRow(row) {
+  if (!row) return 'User';
+  if (row.classList.contains('me')) return 'You';
+
+  const activeConversationId = window.activeConversationId;
+  const conversation = (window.conversations || []).find((item) => item.id === activeConversationId);
+  const otherUser = conversation?.otherUser || {};
+  return otherUser.nickname || otherUser.display_name || 'User';
+}
+
+function setReplyComposerContext(context) {
+  const bar = document.getElementById('reply-preview-bar');
+  if (!bar) return;
+
+  if (!context?.id) {
+    bar.classList.add('hidden');
+    bar.innerHTML = '';
+    window.replyingToMessageId = null;
+    window.replyingToMessageContext = null;
+    return;
+  }
+
+  const sender = escapeHtml(context.senderName || 'User');
+  const snippet = escapeHtml(context.snippet || 'Message');
+
+  bar.innerHTML = `<div class="reply-preview-card"><div class="reply-preview-info"><div class="reply-preview-label">Replying to ${sender}</div><div class="reply-preview-text">${snippet}</div></div><button type="button" class="reply-preview-cancel" onclick="cancelReplying()" aria-label="Cancel reply">×</button></div>`;
+  bar.classList.remove('hidden');
+
+  window.replyingToMessageId = context.id;
+  window.replyingToMessageContext = {
+    id: context.id,
+    senderName: context.senderName,
+    snippet: context.snippet
+  };
+}
+
+function cancelReplying() {
+  setReplyComposerContext(null);
+}
+
+function startReplyToMessageRow(row) {
+  const messageId = row?.dataset?.messageId;
+  if (!row || !messageId) return;
+
+  const context = {
+    id: messageId,
+    senderName: getReplySenderLabelForRow(row),
+    snippet: getReplySnippetForMessage(row)
+  };
+
+  setReplyComposerContext(context);
+
+  const input = document.getElementById('msg-input');
+  if (input) {
+    input.focus();
+  }
+
+  if (navigator.vibrate) {
+    navigator.vibrate(10);
+  }
+}
+
+function buildReplyGhostMarkup(replyTo) {
+  if (!replyTo?.id) return '';
+
+  const sender = escapeHtml(replyTo.senderName || 'User');
+  const snippet = escapeHtml(replyTo.snippet || 'Message');
+  const parentId = escapeHtml(replyTo.id);
+
+  return `<div class="reply-ghost" data-reply-parent-id="${parentId}" role="button" aria-label="Jump to replied message"><div class="reply-ghost-sender">${sender}</div><div class="reply-ghost-snippet">${snippet}</div></div>`;
+}
+
+function scrollToReplyParentMessage(messageId) {
+  if (!messageId) return;
+
+  const row = getMessageRowById(messageId);
+  if (!row) return;
+
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.add('reply-jump-highlight');
+  setTimeout(() => {
+    row.classList.remove('reply-jump-highlight');
+  }, 1200);
+}
+
+async function jumpToRepliedMessage(messageId) {
+  if (!messageId) return;
+
+  let row = getMessageRowById(messageId);
+  if (!row && window.activeConversationId && typeof window.openConversationById === 'function') {
+    try {
+      await window.openConversationById(window.activeConversationId);
+    } catch (_) {
+      // Ignore fetch failures and fall through to best-effort local jump.
+    }
+    row = getMessageRowById(messageId);
+  }
+
+  if (!row) {
+    if (typeof window.showInAppNotificationToast === 'function') {
+      window.showInAppNotificationToast({ senderName: 'Reply', messageText: 'Original message is not loaded in this view.' });
+    }
+    return;
+  }
+
+  scrollToReplyParentMessage(messageId);
 }
 
 function parseMessageReactions(rawValue) {
@@ -1246,23 +1376,30 @@ function sendMessage() {
   const hasSocket = window.appSocket && window.appSocket.connected;
   const conversationId = window.activeConversationId;
   const clientMessageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const replyContext = window.replyingToMessageContext;
+  const replyParentMessageId = window.replyingToMessageId;
 
   if (hasSocket && conversationId) {
     window.pendingClientMessageIds.add(clientMessageId);
 
     // Optimistically render immediately on sender side.
-    const insertedOwnRow = addMessage(text, true, false, clientMessageId);
+    const insertedOwnRow = addMessage(text, true, false, clientMessageId, {
+      replyTo: replyContext || null
+    });
     scrollOwnMessageRowIntoView(insertedOwnRow);
 
     emitSocketEvent('message:send', {
       conversationId,
       content: text,
       contentType: 'text',
-      clientMessageId
+      clientMessageId,
+      parentMessageId: replyParentMessageId || null
     });
   } else {
     // Fallback for local-only preview when no active realtime conversation is set.
-    const insertedOwnRow = addMessage(text, true);
+    const insertedOwnRow = addMessage(text, true, false, clientMessageId, {
+      replyTo: replyContext || null
+    });
     scrollOwnMessageRowIntoView(insertedOwnRow);
     if (!conversationId) {
       console.warn('[chat] No activeConversationId. Call joinConversation(conversationId) first.');
@@ -1279,6 +1416,7 @@ function sendMessage() {
     window.typingStopTimeout = null;
   }
   emitTypingStop();
+  cancelReplying();
 
   // Keep keyboard open after send while user remains in chat.
   if (currentView === 'view-chat' && window.activeConversationId) {
@@ -1315,6 +1453,7 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
   const contentType = meta.contentType || (isVoice ? 'audio' : 'text');
   const mediaUrl = meta.mediaUrl || text;
   const showVideoLoading = Boolean(meta.showVideoLoading && isMe && contentType === 'video');
+  const replyGhostMarkup = buildReplyGhostMarkup(meta.replyTo);
   const textMarkup = buildTextMessageMarkup(text);
 
   if (isMe && deliveryStatus) {
@@ -1330,11 +1469,11 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
     } else if (contentType === 'video') {
       row.innerHTML = `<div class="msg-avatar">😄</div><div><div class="bubble them media-bubble" style="padding:0" data-media-type="video" data-media-url="${mediaUrl}"><video src="${mediaUrl}" preload="metadata"></video><div class="media-overlay"></div><button class="play-btn video-inline-play" type="button" aria-label="Play video"><svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:#fff"><polygon points="8 5 19 12 8 19 8 5"></polygon></svg></button></div></div>`;
     } else {
-      row.innerHTML = `<div class="msg-avatar">😄</div><div><div class="bubble them">${textMarkup}</div></div>`;
+      row.innerHTML = `<div class="msg-avatar">😄</div><div><div class="bubble them">${replyGhostMarkup}${textMarkup}</div></div>`;
     }
   } else if (isVoice) {
     const dur = recordingSeconds || 3;
-    row.innerHTML = `<div><div class="bubble me voice-bubble"><button class="voice-play" onclick="playVoice(this)"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></button><div class="voice-waveform" id="vw-${Date.now()}"></div><div class="voice-time">0:${String(dur).padStart(2, '0')}</div></div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
+    row.innerHTML = `<div><div class="bubble me voice-bubble">${replyGhostMarkup}<button class="voice-play" onclick="playVoice(this)"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></button><div class="voice-waveform" id="vw-${Date.now()}"></div><div class="voice-time">0:${String(dur).padStart(2, '0')}</div></div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
   } else {
     if (contentType === 'image') {
       row.innerHTML = `<div><div class="bubble me media-bubble" style="padding:0" data-open-media="1" data-media-type="image" data-media-url="${mediaUrl}"><img src="${mediaUrl}" alt="image"><div class="media-overlay"></div></div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
@@ -1348,7 +1487,7 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
         : '<div class="video-pending-surface"><svg viewBox="0 0 24 24" style="width:26px;height:26px;stroke:rgba(255,255,255,0.86);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polygon points="8 5 19 12 8 19 8 5"></polygon></svg><span>Sending video...</span></div>';
       row.innerHTML = `<div><div class="bubble me media-bubble${showVideoLoading ? ' is-pending' : ''}" style="padding:0" data-media-type="video" data-media-url="${mediaUrl}">${videoSurface}<div class="media-overlay"></div>${pendingOverlay}</div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
     } else {
-      row.innerHTML = `<div><div class="bubble me">${textMarkup}</div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
+      row.innerHTML = `<div><div class="bubble me">${replyGhostMarkup}${textMarkup}</div><div class="msg-time"><span class="msg-delivery-status">${deliveryStatus}</span></div></div>`;
     }
   }
 
@@ -1525,6 +1664,7 @@ function renderConversationMessages(messages) {
         contentType: message.content_type,
         mediaUrl: message.mediaUrl || message.content,
         fileName: message.file_name,
+        replyTo: message.replyTo || message.reply_to || null,
         reactions: message.reactions,
         deliveryStatus: isMe ? (seenByOther ? 'Seen' : initialDeliveryStatus || 'Delivered') : null
       }
@@ -1644,6 +1784,7 @@ async function handleIncomingSocketMessage(payload) {
     contentType: payload.content_type,
     mediaUrl: resolvedMediaUrl,
     fileName: payload.fileName,
+    replyTo: payload.replyTo || payload.reply_to || null,
     deliveryStatus: isMe ? 'Delivered' : null
   });
 
@@ -1732,6 +1873,18 @@ function hideRemoteTypingIndicator(payload) {
 }
 
 document.addEventListener('click', (event) => {
+  if (Date.now() < Number(window.__zapSuppressBubbleClickUntil || 0)) {
+    return;
+  }
+
+  const replyGhost = event.target.closest('.reply-ghost');
+  if (replyGhost?.dataset?.replyParentId) {
+    event.preventDefault();
+    event.stopPropagation();
+    jumpToRepliedMessage(replyGhost.dataset.replyParentId);
+    return;
+  }
+
   const linkTarget = event.target.closest('.message-link, .message-link-preview');
   if (linkTarget) {
     event.preventDefault();
@@ -1778,6 +1931,8 @@ window.showMessageActionSheetForRow = showMessageActionSheetForRow;
 window.hideMessageActionSheet = hideMessageActionSheet;
 window.copySelectedMessageText = copySelectedMessageText;
 window.deleteSelectedMessage = deleteSelectedMessage;
+window.startReplyToMessageRow = startReplyToMessageRow;
+window.cancelReplying = cancelReplying;
 window.addReaction = addReaction;
 window.handleMessageReactionAdded = handleMessageReactionAdded;
 window.handleMessageReactionRemoved = handleMessageReactionRemoved;

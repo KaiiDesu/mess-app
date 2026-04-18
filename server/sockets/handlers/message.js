@@ -5,7 +5,16 @@ const { v4: uuid } = require('uuid');
 
 const handleSendMessage = async (socket, data, userId) => {
   try {
-    const { conversationId, content, contentType, clientMessageId, mediaId, mediaUrl, fileName } = data;
+    const {
+      conversationId,
+      content,
+      contentType,
+      clientMessageId,
+      mediaId,
+      mediaUrl,
+      fileName,
+      parentMessageId
+    } = data;
 
     // Validate input
     if (!conversationId || (!content && !mediaUrl && !mediaId)) {
@@ -34,6 +43,8 @@ const handleSendMessage = async (socket, data, userId) => {
 
     let resolvedMediaId = mediaId || null;
     let resolvedContentType = contentType || (mediaUrl ? 'image' : 'text');
+    let resolvedParentMessageId = null;
+    let replyTo = null;
 
     if (resolvedMediaId) {
       const { data: mediaRecord, error: mediaError } = await supabase
@@ -55,9 +66,39 @@ const handleSendMessage = async (socket, data, userId) => {
       }
     }
 
+    if (parentMessageId) {
+      const { data: parentMessage, error: parentError } = await supabase
+        .from('messages')
+        .select('id, conversation_id, sender_id, content, content_type, sender:sender_id(display_name)')
+        .eq('id', parentMessageId)
+        .single();
+
+      if (parentError || !parentMessage || parentMessage.conversation_id !== conversationId) {
+        return socket.emit('error', {
+          code: 'INVALID_PARENT_MESSAGE',
+          message: 'Reply target is invalid or unavailable.',
+          clientMessageId
+        });
+      }
+
+      resolvedParentMessageId = parentMessage.id;
+      replyTo = {
+        id: parentMessage.id,
+        senderId: parentMessage.sender_id,
+        senderName: parentMessage?.sender?.display_name || 'User',
+        snippet: parentMessage.content_type === 'image'
+          ? 'Photo'
+          : parentMessage.content_type === 'video'
+          ? 'Video'
+          : parentMessage.content_type === 'audio'
+          ? 'Voice message'
+          : (parentMessage.content || '').trim() || 'Message'
+      };
+    }
+
     // Insert message
     const messageId = uuid();
-    const { data: message, error: msgError } = await supabase
+    let { data: message, error: msgError } = await supabase
       .from('messages')
       .insert({
         id: messageId,
@@ -65,10 +106,35 @@ const handleSendMessage = async (socket, data, userId) => {
         sender_id: userId,
         content: content || null,
         content_type: resolvedContentType,
-        media_id: resolvedMediaId
+        media_id: resolvedMediaId,
+        parent_message_id: resolvedParentMessageId
       })
       .select()
       .single();
+
+    // Backward-compat fallback when migration for parent_message_id is not applied yet.
+    const parentColumnMissing =
+      msgError &&
+      (msgError.code === '42703' ||
+        msgError.code === 'PGRST204' ||
+        String(msgError.message || '').includes('parent_message_id'));
+
+    if (parentColumnMissing) {
+      resolvedParentMessageId = null;
+      replyTo = null;
+      ({ data: message, error: msgError } = await supabase
+        .from('messages')
+        .insert({
+          id: messageId,
+          conversation_id: conversationId,
+          sender_id: userId,
+          content: content || null,
+          content_type: resolvedContentType,
+          media_id: resolvedMediaId
+        })
+        .select()
+        .single());
+    }
 
     if (msgError) {
       logger.error('Failed to insert message', { error: msgError.message, userId });
@@ -94,6 +160,8 @@ const handleSendMessage = async (socket, data, userId) => {
       mediaId: resolvedMediaId,
       mediaUrl: null,
       fileName: fileName || null,
+      parent_message_id: resolvedParentMessageId,
+      replyTo,
       clientMessageId
     });
 
@@ -105,6 +173,8 @@ const handleSendMessage = async (socket, data, userId) => {
       mediaId: resolvedMediaId,
       mediaUrl: null,
       fileName: fileName || null,
+      parent_message_id: resolvedParentMessageId,
+      replyTo,
       clientMessageId
     });
 

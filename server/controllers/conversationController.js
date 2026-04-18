@@ -331,9 +331,49 @@ const getMessages = async (req, res) => {
       readBy: receipts?.filter((r) => r.message_id === msg.id).map((r) => r.reader_id) || []
     }));
 
+    const parentMessageIds = [...new Set(
+      messagesWithReceipts.map((msg) => msg.parent_message_id).filter(Boolean)
+    )];
+
+    let parentMessageById = new Map();
+    if (parentMessageIds.length) {
+      const { data: parentMessages } = await supabase
+        .from('messages')
+        .select('id, sender_id, content, content_type, sender:sender_id(display_name)')
+        .in('id', parentMessageIds);
+
+      parentMessageById = new Map(
+        (parentMessages || []).map((parent) => {
+          const snippet =
+            parent.content_type === 'image'
+              ? 'Photo'
+              : parent.content_type === 'video'
+              ? 'Video'
+              : parent.content_type === 'audio'
+              ? 'Voice message'
+              : String(parent.content || '').trim() || 'Message';
+
+          return [
+            parent.id,
+            {
+              id: parent.id,
+              senderId: parent.sender_id,
+              senderName: parent?.sender?.display_name || 'User',
+              snippet
+            }
+          ];
+        })
+      );
+    }
+
+    const messagesWithReplyPreview = messagesWithReceipts.map((msg) => ({
+      ...msg,
+      reply_to: msg.parent_message_id ? parentMessageById.get(msg.parent_message_id) || null : null
+    }));
+
     res.json({
-      messages: messagesWithReceipts,
-      count: messagesWithReceipts.length
+      messages: messagesWithReplyPreview,
+      count: messagesWithReplyPreview.length
     });
   } catch (err) {
     logger.error('Get messages error', { error: err.message });
