@@ -17,6 +17,7 @@ let replySwipeState = {
   startX: 0,
   startY: 0,
   maxDx: 0,
+  direction: 1,
   active: false
 };
 
@@ -67,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
       startX: Number(point?.clientX || 0),
       startY: Number(point?.clientY || 0),
       maxDx: 0,
+      direction: row.classList.contains('me') ? -1 : 1,
       active: true
     };
   };
@@ -75,7 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!replySwipeState.active || !replySwipeState.row || !replySwipeState.contentNode) return;
 
     const point = event.touches?.[0] || event;
-    const dx = Number(point?.clientX || 0) - replySwipeState.startX;
+    const rawDx = Number(point?.clientX || 0) - replySwipeState.startX;
+    const direction = replySwipeState.direction || 1;
+    const dx = rawDx * direction;
     const dy = Math.abs(Number(point?.clientY || 0) - replySwipeState.startY);
 
     if (dy > 24 && dx < 18) {
@@ -92,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clamped = Math.min(dx, MESSAGE_REPLY_SWIPE_MAX_PX);
     replySwipeState.maxDx = Math.max(replySwipeState.maxDx, clamped);
     replySwipeState.contentNode.style.transition = 'none';
-    replySwipeState.contentNode.style.transform = `translateX(${clamped}px)`;
+    replySwipeState.contentNode.style.transform = `translateX(${clamped * direction}px)`;
   };
 
   const endReplySwipe = (shouldTrigger = true) => {
@@ -103,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
         startX: 0,
         startY: 0,
         maxDx: 0,
+        direction: 1,
         active: false
       };
       return;
@@ -129,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
       startX: 0,
       startY: 0,
       maxDx: 0,
+      direction: 1,
       active: false
     };
   };
