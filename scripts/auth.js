@@ -4,7 +4,7 @@ function getApiBaseUrl() {
 
 let serverDownRetryTimer = null;
 let serverDownRetryInFlight = false;
-let serverDownInitialRetryTimer = null;
+let serverDownRetryAttempt = 0;
 
 function showServerRecoveryNotice() {
   const message = 'You were automatically logged out by session. The server is back online.';
@@ -21,14 +21,10 @@ function showServerRecoveryNotice() {
 }
 
 function stopServerDownAutoRetry() {
-  if (serverDownInitialRetryTimer) {
-    clearTimeout(serverDownInitialRetryTimer);
-    serverDownInitialRetryTimer = null;
-  }
-
   if (!serverDownRetryTimer) return;
-  clearInterval(serverDownRetryTimer);
+  clearTimeout(serverDownRetryTimer);
   serverDownRetryTimer = null;
+  serverDownRetryAttempt = 0;
 }
 
 async function pingServerHealth() {
@@ -50,7 +46,6 @@ async function pingServerHealth() {
 
 function handleServerRecovered() {
   const noticePending = sessionStorage.getItem('zap_server_down_notice_pending') === '1';
-  serverDownWasActive = false;
   sessionStorage.removeItem('zap_server_down_notice_pending');
   setServerDownOverlayVisible(false);
 
@@ -63,30 +58,49 @@ function handleServerRecovered() {
   }
 }
 
-function startServerDownAutoRetry() {
-  if (serverDownRetryTimer || serverDownInitialRetryTimer) return;
+function getServerDownRetryDelayMs(attempt) {
+  // 1s, 2s, 4s, 8s, then cap at 12s
+  const base = Math.min(12000, 1000 * Math.pow(2, Math.max(0, attempt)));
+  const jitter = Math.floor(Math.random() * 250);
+  return base + jitter;
+}
 
-  const tryRecover = async () => {
-    if (serverDownRetryInFlight) return;
-    serverDownRetryInFlight = true;
+function scheduleServerDownRetry(delayMs) {
+  if (serverDownRetryTimer) {
+    clearTimeout(serverDownRetryTimer);
+  }
 
-    try {
-      const reachable = await pingServerHealth();
-      if (reachable) {
-        handleServerRecovered();
-      }
-    } finally {
-      serverDownRetryInFlight = false;
+  serverDownRetryTimer = setTimeout(() => {
+    runServerDownRetryProbe();
+  }, Math.max(0, delayMs));
+}
+
+async function runServerDownRetryProbe() {
+  if (serverDownRetryInFlight) {
+    scheduleServerDownRetry(500);
+    return;
+  }
+
+  serverDownRetryInFlight = true;
+  try {
+    const reachable = await pingServerHealth();
+    if (reachable) {
+      handleServerRecovered();
+      return;
     }
-  };
 
-  // Quick first probe so users do not wait for the long interval when Render wakes up.
-  serverDownInitialRetryTimer = setTimeout(async () => {
-    serverDownInitialRetryTimer = null;
-    await tryRecover();
-  }, 1500);
+    serverDownRetryAttempt += 1;
+    scheduleServerDownRetry(getServerDownRetryDelayMs(serverDownRetryAttempt));
+  } finally {
+    serverDownRetryInFlight = false;
+  }
+}
 
-  serverDownRetryTimer = setInterval(tryRecover, 12000);
+function startServerDownAutoRetry() {
+  if (serverDownRetryTimer || serverDownRetryInFlight) return;
+
+  // Immediate first retry attempt; no fixed 15s wait.
+  scheduleServerDownRetry(0);
 }
 
 function setServerDownOverlayVisible(isVisible) {
