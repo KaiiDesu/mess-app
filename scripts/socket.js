@@ -29,6 +29,38 @@ const CONVERSATION_SWIPE_ACTION_WIDTH = 240;
 const CONVERSATION_SWIPE_HAPTIC_SUPPORTED = Boolean(navigator.vibrate);
 const CONVERSATIONS_REFRESH_INTERVAL_MS = 12000;
 const CONVERSATIONS_REFRESH_MIN_GAP_MS = 3000;
+const NETWORK_REQUEST_TIMEOUT_MS = 12000;
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = NETWORK_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+
+    const contentType = String(response.headers?.get('content-type') || '').toLowerCase();
+    let payload = {};
+
+    if (contentType.includes('application/json')) {
+      payload = await response.json().catch(() => ({}));
+    } else {
+      const rawText = await response.text().catch(() => '');
+      payload = rawText ? { message: rawText } : {};
+    }
+
+    return { response, payload };
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Request timed out. Please check your connection.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 function areReadReceiptsEnabled() {
   return window.__zapReadReceiptsEnabled !== false;
@@ -885,14 +917,13 @@ async function loadConversations(options = {}) {
   }
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/conversations`, {
+    const { response, payload } = await fetchJsonWithTimeout(`${getApiBaseUrl()}/api/conversations`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`
       }
     });
 
-    const payload = await response.json();
     if (!response.ok) {
       if (requestId < conversationsLoadAppliedRequestId) {
         return;
@@ -916,152 +947,169 @@ async function loadConversations(options = {}) {
       const otherUser = conversation?.otherUser;
       if (otherUser?.id && !window.userPresenceById[otherUser.id]) {
         window.userPresenceById[otherUser.id] = normalizePresenceStatus(
-          otherUser.presence_status,
-          otherUser.is_online
-        );
-      }
-    });
-    writeCachedConversations(window.conversations);
-    renderConversationList(window.conversations);
-  } catch (_) {
-    if (requestId < conversationsLoadAppliedRequestId) {
-      return;
-    }
-
-    if (!window.conversations || !window.conversations.length) {
-      conversationsLoadAppliedRequestId = requestId;
-      renderConversationList([]);
-      window.conversations = [];
-    }
-  }
-}
-
-function shouldRunPeriodicConversationRefresh() {
-  if (!getSocketToken()) return false;
-  if (!isAppForeground()) return false;
-  if (navigator.onLine === false) return false;
-  if (typeof currentView !== 'undefined' && currentView === 'view-login') return false;
-  return true;
-}
-
-async function refreshConversationsPeriodically(force = false) {
-  if (!force && !shouldRunPeriodicConversationRefresh()) {
-    return;
-  }
-
-  const now = Date.now();
-  if (!force && now - lastConversationsRefreshAt < CONVERSATIONS_REFRESH_MIN_GAP_MS) {
-    return;
-  }
-
-  if (conversationsRefreshInFlight) {
-    return conversationsRefreshInFlight;
-  }
-
-  lastConversationsRefreshAt = now;
-  conversationsRefreshInFlight = loadConversations({ useCache: false }).finally(() => {
-    conversationsRefreshInFlight = null;
-  });
-
-  return conversationsRefreshInFlight;
-}
-
-function startConversationsRefreshLoop() {
-  if (conversationsRefreshTimer) return;
-
-  conversationsRefreshTimer = setInterval(() => {
-    refreshConversationsPeriodically(false);
-  }, CONVERSATIONS_REFRESH_INTERVAL_MS);
-}
-
-function stopConversationsRefreshLoop() {
-  if (!conversationsRefreshTimer) return;
-  clearInterval(conversationsRefreshTimer);
-  conversationsRefreshTimer = null;
-}
-
-async function fetchConversationMessages(conversationId) {
-  const token = getSocketToken();
-  if (!token) {
-    return [];
-  }
-
-  const response = await fetch(`${getApiBaseUrl()}/api/conversations/${conversationId}/messages`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
-
-  const payload = await response.json();
-  if (!response.ok) {
-    const code = payload?.code ? `[${payload.code}] ` : '';
-    throw new Error(`${code}${payload?.message || 'Failed to load messages'}`);
-  }
-
-  return payload.messages || [];
-}
-
-async function fetchConversationDetails(conversationId) {
-  const token = getSocketToken();
-  if (!token) {
-    return null;
-  }
-
-  const response = await fetch(`${getApiBaseUrl()}/api/conversations/${conversationId}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
-
-  const payload = await response.json();
-  if (!response.ok) {
-    const code = payload?.code ? `[${payload.code}] ` : '';
-    throw new Error(`${code}${payload?.message || 'Failed to load conversation details'}`);
-  }
-
-  return payload;
-}
-
-async function openConversationById(conversationId) {
-  let conversation = (window.conversations || []).find((item) => item.id === conversationId);
-
-  // Newly created/recreated conversations may exist without enriched otherUser details in client state.
-  if (!conversation || !conversation.otherUser?.display_name) {
-    try {
-      const detailedConversation = await fetchConversationDetails(conversationId);
-      if (detailedConversation?.id) {
-        const list = Array.isArray(window.conversations) ? [...window.conversations] : [];
-        const index = list.findIndex((item) => item.id === conversationId);
-        if (index >= 0) {
-          list[index] = {
-            ...list[index],
-            ...detailedConversation,
-            otherUser: {
-              ...(list[index].otherUser || {}),
-              ...(detailedConversation.otherUser || {})
+        const { response, payload } = await fetchJsonWithTimeout(
+          `${getApiBaseUrl()}/api/conversations/${conversationId}/messages`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`
             }
-          };
-        } else {
-          list.unshift(detailedConversation);
+          }
+        );
+
+        if (!response.ok) {
+          const code = payload?.code ? `[${payload.code}] ` : '';
+          throw new Error(`${code}${payload?.message || 'Failed to load messages'}`);
         }
-        window.conversations = list;
-        renderConversationList(window.conversations);
-        conversation = list.find((item) => item.id === conversationId) || detailedConversation;
+
+        return payload.messages || [];
       }
-    } catch (error) {
-      console.warn('[chat] failed loading conversation details:', error?.message || error);
-    }
-  }
 
-  const otherUser = conversation?.otherUser || {};
+      async function fetchConversationDetails(conversationId) {
+        const token = getSocketToken();
+        if (!token) {
+          return null;
+        }
 
-  const chatName = document.getElementById('chat-name');
-  if (chatName) {
-    chatName.textContent = getConversationDisplayName(conversation || {});
-  }
+        const { response, payload } = await fetchJsonWithTimeout(
+          `${getApiBaseUrl()}/api/conversations/${conversationId}`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
 
+        if (!response.ok) {
+          const code = payload?.code ? `[${payload.code}] ` : '';
+          throw new Error(`${code}${payload?.message || 'Failed to load conversation details'}`);
+        }
+
+        return payload;
+      }
+
+      function showChatLoadFailure(message) {
+        const messageText = String(message || '').trim() || 'Unable to load this conversation right now.';
+
+        if (typeof window.showInAppNotificationToast === 'function') {
+          window.showInAppNotificationToast({
+            senderName: 'Connection',
+            messageText
+          });
+          return;
+        }
+
+        console.warn('[chat] load failure:', messageText);
+      }
+
+      async function openConversationById(conversationId) {
+        let conversation = (window.conversations || []).find((item) => item.id === conversationId);
+
+        // Newly created/recreated conversations may exist without enriched otherUser details in client state.
+        if (!conversation || !conversation.otherUser?.display_name) {
+          try {
+            const detailedConversation = await fetchConversationDetails(conversationId);
+            if (detailedConversation?.id) {
+              const list = Array.isArray(window.conversations) ? [...window.conversations] : [];
+              const index = list.findIndex((item) => item.id === conversationId);
+              if (index >= 0) {
+                list[index] = {
+                  ...list[index],
+                  ...detailedConversation,
+                  otherUser: {
+                    ...(list[index].otherUser || {}),
+                    ...(detailedConversation.otherUser || {})
+                  }
+                };
+              } else {
+                list.unshift(detailedConversation);
+              }
+              window.conversations = list;
+              renderConversationList(window.conversations);
+              conversation = list.find((item) => item.id === conversationId) || detailedConversation;
+            }
+          } catch (error) {
+            console.warn('[chat] failed loading conversation details:', error?.message || error);
+          }
+        }
+
+        const otherUser = conversation?.otherUser || {};
+
+        const chatName = document.getElementById('chat-name');
+        if (chatName) {
+          chatName.textContent = getConversationDisplayName(conversation || {});
+        }
+
+        const chatAvatar = document.getElementById('chat-av');
+        if (chatAvatar) {
+          chatAvatar.textContent = getInitialAvatar(otherUser.display_name || 'C');
+        }
+
+        const chatStatus = document.getElementById('chat-status');
+        if (chatStatus) {
+          setChatHeaderPresenceStatus(getUserPresenceStatus(otherUser.id, otherUser.is_online));
+        }
+
+        applyThemeFromConversation(conversation);
+
+        navigate('view-chat');
+
+        window.activeConversationId = conversationId;
+        joinConversation(conversationId);
+
+        window.__zapConversationMessagesLoadingId = conversationId;
+        const loadingTimer =
+          typeof window.renderConversationLoadingState === 'function'
+            ? setTimeout(() => {
+                if (window.__zapConversationMessagesLoadingId !== conversationId) return;
+                window.renderConversationLoadingState();
+              }, 220)
+            : null;
+
+        try {
+          const messages = await fetchConversationMessages(conversationId);
+          if (loadingTimer) {
+            clearTimeout(loadingTimer);
+          }
+          if (typeof window.renderConversationMessages === 'function') {
+            window.renderConversationMessages(messages);
+          }
+
+          syncConversationLastMessageSeenStateFromMessages(conversationId, messages);
+
+          if (isConversationCurrentlyVisibleOnScreen(conversationId)) {
+            markMessagesAsRead(conversationId, messages);
+          }
+
+          const existing = (window.conversations || []).find((item) => item.id === conversationId);
+          if (existing) {
+            existing.unreadCount = 0;
+            renderConversationList(window.conversations);
+          }
+        } catch (error) {
+          if (loadingTimer) {
+            clearTimeout(loadingTimer);
+          }
+          if (typeof window.renderConversationMessages === 'function') {
+            window.renderConversationMessages([]);
+          }
+          showChatLoadFailure(error?.message || 'Unable to load this conversation right now.');
+          console.warn('[chat] failed loading messages:', error?.message || error);
+        } finally {
+          if (loadingTimer) {
+            clearTimeout(loadingTimer);
+          }
+
+          if (window.__zapConversationMessagesLoadingId === conversationId) {
+            window.__zapConversationMessagesLoadingId = null;
+          }
+
+          if (typeof window.flushQueuedIncomingMessagesForConversation === 'function') {
+            window.flushQueuedIncomingMessagesForConversation(conversationId);
+          }
+        }
+      }
   const chatAvatar = document.getElementById('chat-av');
   if (chatAvatar) {
     chatAvatar.textContent = getInitialAvatar(otherUser.display_name || 'C');

@@ -10,7 +10,37 @@ function getAuthToken() {
   if (typeof window.getStoredAuthToken === 'function') {
     return window.getStoredAuthToken();
   }
-  return localStorage.getItem('zap_jwt') || sessionStorage.getItem('zap_jwt') || '';
+  return (
+    localStorage.getItem('zap_jwt') ||
+    sessionStorage.getItem('zap_jwt') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('token') ||
+    ''
+  );
+}
+
+async function createConversationDirectly(withUserId) {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Please sign in first.');
+  }
+
+  const response = await fetch(`${getApiBaseUrlFromWindow()}/api/conversations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ withUserId })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const code = payload?.code ? `[${payload.code}] ` : '';
+    throw new Error(`${code}${payload?.message || 'Failed to create conversation.'}`);
+  }
+
+  return payload;
 }
 
 function escapeHtml(value) {
@@ -266,11 +296,26 @@ async function openConversationWithFriend(friendId) {
   }
 
   try {
-    if (typeof window.createAndJoinConversation !== 'function') {
-      throw new Error('Chat service is still loading. Please try again.');
-    }
+    let conversation = null;
 
-    const conversation = await window.createAndJoinConversation(friendId);
+    if (typeof window.createAndJoinConversation === 'function') {
+      conversation = await window.createAndJoinConversation(friendId);
+    } else {
+      // Fallback path: create the conversation over REST and continue.
+      conversation = await createConversationDirectly(friendId);
+
+      if (conversation?.id) {
+        window.activeConversationId = conversation.id;
+
+        if (typeof window.joinConversation === 'function') {
+          window.joinConversation(conversation.id);
+        }
+
+        if (typeof window.loadConversations === 'function') {
+          window.loadConversations();
+        }
+      }
+    }
 
     if (conversation?.id && typeof window.openConversationById === 'function') {
       await window.openConversationById(conversation.id);
