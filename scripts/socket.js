@@ -72,7 +72,7 @@ function setChatHeaderPresenceStatus(status) {
 }
 
 function getConversationSwipeTrack(row) {
-  return row?.querySelector('.chat-swipe-track') || null;
+  return row?.querySelector('.chat-swipe-body') || null;
 }
 
 function closeConversationSwipe(row = activeConversationSwipeRow, force = false) {
@@ -653,17 +653,15 @@ function renderConversationList(conversations) {
 
       return `
         <div class="chat-item${unreadClass}" data-conversation-id="${conversationId}">
-          <div class="chat-swipe-track">
-            <div class="chat-swipe-actions" aria-hidden="true">
-              <button type="button" class="chat-swipe-action-btn archive" data-action="archive">Archive</button>
-              <button type="button" class="chat-swipe-action-btn restrict" data-action="restrict">Restrict</button>
-              <button type="button" class="chat-swipe-action-btn delete" data-action="delete">Delete</button>
-            </div>
-            <div class="chat-swipe-body">
-              <div class="avatar" style="background:linear-gradient(135deg,#7c6bff22,#a78bfa22)"><span>${avatar}</span>${onlineDot}</div>
-              <div class="chat-info"><div class="chat-name">${displayName}</div><div class="chat-preview">${preview}</div></div>
-              <div class="chat-meta"><div class="chat-time">${timeLabel}</div>${muteLabel}${unreadBadge}</div>
-            </div>
+          <div class="chat-swipe-actions" aria-hidden="true">
+            <button type="button" class="chat-swipe-action-btn archive" data-action="archive">Archive</button>
+            <button type="button" class="chat-swipe-action-btn restrict" data-action="restrict">Restrict</button>
+            <button type="button" class="chat-swipe-action-btn delete" data-action="delete">Delete</button>
+          </div>
+          <div class="chat-swipe-body">
+            <div class="avatar" style="background:linear-gradient(135deg,#7c6bff22,#a78bfa22)"><span>${avatar}</span>${onlineDot}</div>
+            <div class="chat-info"><div class="chat-name">${displayName}</div><div class="chat-preview">${preview}</div></div>
+            <div class="chat-meta"><div class="chat-time">${timeLabel}</div>${muteLabel}${unreadBadge}</div>
           </div>
         </div>
       `;
