@@ -16,6 +16,26 @@ function getReactionPickerElement() {
   return document.getElementById('reaction-picker');
 }
 
+function isNativeCapacitorRuntime() {
+  try {
+    return Boolean(window.Capacitor?.isNativePlatform && window.Capacitor.isNativePlatform());
+  } catch (_) {
+    return false;
+  }
+}
+
+function getCapacitorClipboardPlugin() {
+  return window.Capacitor?.Plugins?.Clipboard || null;
+}
+
+function getCapacitorHapticsPlugin() {
+  return window.Capacitor?.Plugins?.Haptics || null;
+}
+
+function getCapacitorToastPlugin() {
+  return window.Capacitor?.Plugins?.Toast || null;
+}
+
 function getMessageActionSheetElement() {
   return document.getElementById('message-action-sheet');
 }
@@ -244,7 +264,11 @@ async function copySelectedMessageText() {
   }
 
   try {
-    if (navigator.clipboard?.writeText) {
+    const isNative = isNativeCapacitorRuntime();
+    const nativeClipboard = getCapacitorClipboardPlugin();
+    if (isNative && nativeClipboard?.write) {
+      await nativeClipboard.write({ string: messageText });
+    } else if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(messageText);
     } else {
       const fallbackInput = document.createElement('textarea');
@@ -256,6 +280,24 @@ async function copySelectedMessageText() {
       fallbackInput.select();
       document.execCommand('copy');
       fallbackInput.remove();
+    }
+
+    if (isNative) {
+      const nativeHaptics = getCapacitorHapticsPlugin();
+      if (nativeHaptics?.impact) {
+        await nativeHaptics.impact({ style: 'light' });
+      } else if (navigator.vibrate) {
+        navigator.vibrate(40);
+      }
+
+      const nativeToast = getCapacitorToastPlugin();
+      if (nativeToast?.show) {
+        await nativeToast.show({
+          text: 'Copied to clipboard',
+          duration: 'short',
+          position: 'bottom'
+        });
+      }
     }
   } catch (_) {
     // Ignore clipboard failures and still close the menu.
