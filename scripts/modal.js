@@ -266,7 +266,11 @@ async function openConversationWithFriend(friendId) {
   }
 
   try {
-    const conversation = await createAndJoinConversation(friendId);
+    if (typeof window.createAndJoinConversation !== 'function') {
+      throw new Error('Chat service is still loading. Please try again.');
+    }
+
+    const conversation = await window.createAndJoinConversation(friendId);
 
     if (conversation?.id && typeof window.openConversationById === 'function') {
       await window.openConversationById(conversation.id);
