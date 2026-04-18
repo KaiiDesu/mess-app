@@ -16,6 +16,12 @@ function isAppForeground() {
 }
 
 window.userPresenceById = window.userPresenceById || {};
+let activeConversationSwipeRow = null;
+let conversationSwipePointer = null;
+let suppressConversationClickUntil = 0;
+
+const CONVERSATION_SWIPE_ACTION_WIDTH = 240;
+const CONVERSATION_SWIPE_HAPTIC_SUPPORTED = Boolean(navigator.vibrate);
 
 function areReadReceiptsEnabled() {
   return window.__zapReadReceiptsEnabled !== false;
@@ -63,6 +69,275 @@ function setChatHeaderPresenceStatus(status) {
   const chatStatus = document.getElementById('chat-status');
   if (!chatStatus) return;
   chatStatus.textContent = `● ${getPresenceStatusLabel(status)}`;
+}
+
+function getConversationSwipeTrack(row) {
+  return row?.querySelector('.chat-swipe-track') || null;
+}
+
+function closeConversationSwipe(row = activeConversationSwipeRow, force = false) {
+  const targetRow = row || activeConversationSwipeRow;
+  if (!targetRow) return;
+
+  const track = getConversationSwipeTrack(targetRow);
+  if (track) {
+    track.style.transform = 'translateX(0px)';
+  }
+  targetRow.classList.remove('is-swiped');
+
+  if (activeConversationSwipeRow === targetRow || force) {
+    activeConversationSwipeRow = null;
+  }
+}
+
+function openConversationSwipe(row) {
+  if (!row) return;
+
+  if (activeConversationSwipeRow && activeConversationSwipeRow !== row) {
+    closeConversationSwipe(activeConversationSwipeRow, true);
+  }
+
+  const track = getConversationSwipeTrack(row);
+  if (!track) return;
+
+  track.style.transform = `translateX(${-CONVERSATION_SWIPE_ACTION_WIDTH}px)`;
+  row.classList.add('is-swiped');
+  activeConversationSwipeRow = row;
+
+  if (CONVERSATION_SWIPE_HAPTIC_SUPPORTED) {
+    navigator.vibrate(10);
+  }
+}
+
+function setConversationSwipeOffset(row, offsetPx) {
+  const track = getConversationSwipeTrack(row);
+  if (!track) return;
+
+  const clamped = Math.max(-CONVERSATION_SWIPE_ACTION_WIDTH, Math.min(0, offsetPx));
+  track.style.transform = `translateX(${clamped}px)`;
+}
+
+function findConversationFromRow(row) {
+  const conversationId = row?.dataset?.conversationId;
+  if (!conversationId) return null;
+  return (window.conversations || []).find((item) => item.id === conversationId) || null;
+}
+
+function removeConversationFromState(conversationId) {
+  if (!conversationId) return;
+
+  window.conversations = (window.conversations || []).filter((item) => item.id !== conversationId);
+  writeCachedConversations(window.conversations);
+  renderConversationList(window.conversations);
+
+  if (window.activeConversationId === conversationId) {
+    window.activeConversationId = null;
+    if (typeof navigate === 'function') {
+      navigate('view-home');
+    }
+  }
+}
+
+function updateConversationListConversation(conversationId, updater) {
+  if (!conversationId || typeof updater !== 'function') return;
+
+  const list = Array.isArray(window.conversations) ? [...window.conversations] : [];
+  const index = list.findIndex((item) => item.id === conversationId);
+  if (index < 0) return;
+
+  list[index] = updater(list[index]);
+  window.conversations = list;
+  writeCachedConversations(list);
+  renderConversationList(list);
+}
+
+async function deleteConversationFromList(conversationId) {
+  const token = getSocketToken();
+  if (!token || !conversationId) return false;
+
+  const response = await fetch(`${getApiBaseUrl()}/api/conversations/${conversationId}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.message || 'Failed to delete conversation';
+    window.alert(message);
+    return false;
+  }
+
+  return true;
+}
+
+function applyConversationSwipeAction(conversationId, action) {
+  const conversation = (window.conversations || []).find((item) => item.id === conversationId);
+  if (!conversation) return;
+
+  if (action === 'archive') {
+    if (window.appSocket?.connected) {
+      emitSocketEvent('conversation:archive', { conversationId, isArchived: true });
+    }
+    removeConversationFromState(conversationId);
+    return;
+  }
+
+  if (action === 'restrict') {
+    if (window.appSocket?.connected) {
+      emitSocketEvent('conversation:mute', { conversationId });
+    }
+    updateConversationListConversation(conversationId, (item) => ({
+      ...item,
+      is_muted: true
+    }));
+    return;
+  }
+
+  if (action === 'delete') {
+    deleteConversationFromList(conversationId).then((success) => {
+      if (success) {
+        removeConversationFromState(conversationId);
+      }
+    });
+  }
+}
+
+function attachConversationListInteractions(container) {
+  if (!container || container.__zapSwipeHandlersAttached) return;
+
+  const state = {
+    row: null,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    tracking: false,
+    openedBySwipe: false
+  };
+
+  const cancelTracking = () => {
+    if (!state.row) return;
+
+    const shouldOpen = state.currentX <= -CONVERSATION_SWIPE_ACTION_WIDTH * 0.35;
+    if (shouldOpen) {
+      openConversationSwipe(state.row);
+      suppressConversationClickUntil = Date.now() + 250;
+    } else {
+      closeConversationSwipe(state.row);
+      suppressConversationClickUntil = Date.now() + 250;
+    }
+
+    state.row = null;
+    state.pointerId = null;
+    state.tracking = false;
+    state.openedBySwipe = false;
+  };
+
+  container.addEventListener('pointerdown', (event) => {
+    const body = event.target.closest('.chat-swipe-body');
+    if (!body || !container.contains(body)) return;
+
+    const row = body.closest('.chat-item');
+    const track = getConversationSwipeTrack(row);
+    if (!row || !track) return;
+
+    if (event.button !== 0 && event.pointerType !== 'touch') return;
+
+    if (activeConversationSwipeRow && activeConversationSwipeRow !== row) {
+      closeConversationSwipe(activeConversationSwipeRow, true);
+    }
+
+    state.row = row;
+    state.pointerId = event.pointerId;
+    state.startX = event.clientX;
+    state.startY = event.clientY;
+    state.currentX = 0;
+    state.tracking = true;
+    state.openedBySwipe = false;
+
+    try {
+      body.setPointerCapture(event.pointerId);
+    } catch (_) {
+      // Ignore capture errors on unsupported hosts.
+    }
+  });
+
+  container.addEventListener('pointermove', (event) => {
+    if (!state.tracking || !state.row || event.pointerId !== state.pointerId) return;
+
+    const dx = event.clientX - state.startX;
+    const dy = Math.abs(event.clientY - state.startY);
+
+    if (Math.abs(dx) < 10 && dy < 10) return;
+    if (dy > 18 && Math.abs(dx) < 14) {
+      cancelTracking();
+      return;
+    }
+
+    if (dx >= 0) {
+      state.currentX = 0;
+      setConversationSwipeOffset(state.row, 0);
+      return;
+    }
+
+    state.currentX = dx;
+    setConversationSwipeOffset(state.row, dx);
+    event.preventDefault();
+  }, { passive: false });
+
+  container.addEventListener('pointerup', (event) => {
+    if (!state.tracking || event.pointerId !== state.pointerId) return;
+    cancelTracking();
+  });
+
+  container.addEventListener('pointercancel', (event) => {
+    if (!state.tracking || event.pointerId !== state.pointerId) return;
+    closeConversationSwipe(state.row);
+    state.row = null;
+    state.pointerId = null;
+    state.tracking = false;
+    state.openedBySwipe = false;
+  });
+
+  container.addEventListener('click', (event) => {
+    const actionButton = event.target.closest('.chat-swipe-action-btn');
+    if (actionButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const row = actionButton.closest('.chat-item');
+      const conversationId = row?.dataset?.conversationId;
+      const action = actionButton.dataset.action;
+
+      closeConversationSwipe(row);
+      suppressConversationClickUntil = Date.now() + 250;
+      applyConversationSwipeAction(conversationId, action);
+      return;
+    }
+
+    const row = event.target.closest('.chat-item');
+    if (!row || !container.contains(row)) return;
+    if (Date.now() < suppressConversationClickUntil) return;
+
+    if (row.classList.contains('is-swiped')) {
+      closeConversationSwipe(row);
+      return;
+    }
+
+    const conversationId = row.dataset.conversationId;
+    if (conversationId && typeof openConversationById === 'function') {
+      openConversationById(conversationId);
+    }
+  });
+
+  container.addEventListener('scroll', () => {
+    if (activeConversationSwipeRow) {
+      closeConversationSwipe(activeConversationSwipeRow, true);
+    }
+  }, { passive: true });
+
+  container.__zapSwipeHandlersAttached = true;
 }
 
 function updateActiveChatHeaderPresence() {
@@ -373,16 +648,30 @@ function renderConversationList(conversations) {
       const unreadCount = Number(conversation.unreadCount || 0);
       const unreadClass = unreadCount > 0 ? ' unread' : '';
       const unreadBadge = unreadCount > 0 ? `<div class="unread-badge">${unreadCount}</div>` : '';
+      const isMuted = Boolean(conversation.is_muted);
+      const muteLabel = isMuted ? '<div class="chat-pill muted">Restricted</div>' : '';
 
       return `
         <div class="chat-item${unreadClass}" data-conversation-id="${conversationId}">
-          <div class="avatar" style="background:linear-gradient(135deg,#7c6bff22,#a78bfa22)"><span>${avatar}</span>${onlineDot}</div>
-          <div class="chat-info"><div class="chat-name">${displayName}</div><div class="chat-preview">${preview}</div></div>
-          <div class="chat-meta"><div class="chat-time">${timeLabel}</div>${unreadBadge}</div>
+          <div class="chat-swipe-track">
+            <div class="chat-swipe-actions" aria-hidden="true">
+              <button type="button" class="chat-swipe-action-btn archive" data-action="archive">Archive</button>
+              <button type="button" class="chat-swipe-action-btn restrict" data-action="restrict">Restrict</button>
+              <button type="button" class="chat-swipe-action-btn delete" data-action="delete">Delete</button>
+            </div>
+            <div class="chat-swipe-body">
+              <div class="avatar" style="background:linear-gradient(135deg,#7c6bff22,#a78bfa22)"><span>${avatar}</span>${onlineDot}</div>
+              <div class="chat-info"><div class="chat-name">${displayName}</div><div class="chat-preview">${preview}</div></div>
+              <div class="chat-meta"><div class="chat-time">${timeLabel}</div>${muteLabel}${unreadBadge}</div>
+            </div>
+          </div>
         </div>
       `;
     })
     .join('');
+
+  attachConversationListInteractions(container);
+  closeConversationSwipe(activeConversationSwipeRow, true);
 }
 
 function renderConversationListLoadingState() {
