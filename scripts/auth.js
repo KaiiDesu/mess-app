@@ -148,7 +148,7 @@ async function bootstrapSessionOnLaunch() {
   }
 
   if (serverState.unauthorized) {
-    clearAuthSession({ preserveRememberedSession: true });
+    clearAuthSession();
     navigate('view-login');
     setServerDownOverlayVisible(false);
     return;
