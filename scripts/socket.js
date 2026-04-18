@@ -425,6 +425,9 @@ function ensureAppForegroundTracking() {
   document.addEventListener('visibilitychange', () => {
     const visible = document.visibilityState === 'visible';
     setAppForeground(visible);
+    if (visible) {
+      setReadReceiptsEnabled(true);
+    }
     emitPresenceAppState();
     emitPresenceHeartbeat();
     if (!visible) {
@@ -435,6 +438,7 @@ function ensureAppForegroundTracking() {
   // Mobile webviews and desktop browsers can differ in which lifecycle events fire.
   window.addEventListener('focus', () => {
     setAppForeground(true);
+    setReadReceiptsEnabled(true);
     emitPresenceAppState();
     emitPresenceHeartbeat();
   });
@@ -446,6 +450,7 @@ function ensureAppForegroundTracking() {
   });
   window.addEventListener('pageshow', () => {
     setAppForeground(true);
+    setReadReceiptsEnabled(true);
     emitPresenceAppState();
     emitPresenceHeartbeat();
   });
@@ -458,6 +463,7 @@ function ensureAppForegroundTracking() {
 
   document.addEventListener('resume', () => {
     setAppForeground(true);
+    setReadReceiptsEnabled(true);
     emitPresenceAppState();
     emitPresenceHeartbeat();
   });
@@ -469,6 +475,7 @@ function ensureAppForegroundTracking() {
   });
 
   window.addEventListener('online', () => {
+    setReadReceiptsEnabled(true);
     emitPresenceNetworkState();
     emitPresenceAppState();
     emitPresenceHeartbeat();
@@ -1219,6 +1226,7 @@ function initSocket() {
     emitPresenceNetworkState();
     emitPresenceAppState();
     startPresenceHeartbeat();
+    syncReadsIfVisible();
   });
 
   window.appSocket.on('connect_error', (err) => {
