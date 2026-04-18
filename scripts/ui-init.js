@@ -11,6 +11,7 @@ let activePressRow = null;
 
 const MESSAGE_REPLY_SWIPE_TRIGGER_PX = 72;
 const MESSAGE_REPLY_SWIPE_MAX_PX = 86;
+const MESSAGE_REPLY_SWIPE_ENGAGE_PX = 14;
 let replySwipeState = {
   row: null,
   contentNode: null,
@@ -18,6 +19,7 @@ let replySwipeState = {
   startY: 0,
   maxDx: 0,
   direction: 1,
+  engaged: false,
   active: false
 };
 
@@ -69,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
       startY: Number(point?.clientY || 0),
       maxDx: 0,
       direction: row.classList.contains('me') ? -1 : 1,
+      engaged: false,
       active: true
     };
   };
@@ -85,6 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dy > 24 && dx < 18) {
       endReplySwipe(false);
       return;
+    }
+
+    if (!replySwipeState.engaged) {
+      const hasHorizontalIntent = dx > MESSAGE_REPLY_SWIPE_ENGAGE_PX && dx > dy;
+      if (!hasHorizontalIntent) {
+        return;
+      }
+      replySwipeState.engaged = true;
     }
 
     if (dx <= 0) {
@@ -113,7 +124,21 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const { contentNode, row, maxDx } = replySwipeState;
+    const { contentNode, row, maxDx, engaged } = replySwipeState;
+    if (!engaged) {
+      replySwipeState = {
+        row: null,
+        contentNode: null,
+        startX: 0,
+        startY: 0,
+        maxDx: 0,
+        direction: 1,
+        engaged: false,
+        active: false
+      };
+      return;
+    }
+
     contentNode.style.transition = 'transform 0.18s ease';
     contentNode.style.transform = 'translateX(0px)';
 
@@ -135,6 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
       startY: 0,
       maxDx: 0,
       direction: 1,
+      engaged: false,
       active: false
     };
   };
