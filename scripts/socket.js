@@ -22,6 +22,8 @@ let suppressConversationClickUntil = 0;
 let conversationsRefreshTimer = null;
 let conversationsRefreshInFlight = null;
 let lastConversationsRefreshAt = 0;
+let conversationsLoadRequestId = 0;
+let conversationsLoadAppliedRequestId = 0;
 
 const CONVERSATION_SWIPE_ACTION_WIDTH = 240;
 const CONVERSATION_SWIPE_HAPTIC_SUPPORTED = Boolean(navigator.vibrate);
@@ -861,6 +863,7 @@ function markMessagesAsRead(conversationId, messages) {
 
 async function loadConversations(options = {}) {
   const useCache = options.useCache !== false;
+  const requestId = ++conversationsLoadRequestId;
   const token = getSocketToken();
   if (!token) {
     renderConversationList([]);
@@ -891,10 +894,19 @@ async function loadConversations(options = {}) {
 
     const payload = await response.json();
     if (!response.ok) {
+      if (requestId < conversationsLoadAppliedRequestId) {
+        return;
+      }
+      conversationsLoadAppliedRequestId = requestId;
       renderConversationList([]);
       window.conversations = [];
       return;
     }
+
+    if (requestId < conversationsLoadAppliedRequestId) {
+      return;
+    }
+    conversationsLoadAppliedRequestId = requestId;
 
     window.conversations = (payload.conversations || []).map((conversation) => ({
       ...conversation,
@@ -912,7 +924,12 @@ async function loadConversations(options = {}) {
     writeCachedConversations(window.conversations);
     renderConversationList(window.conversations);
   } catch (_) {
+    if (requestId < conversationsLoadAppliedRequestId) {
+      return;
+    }
+
     if (!window.conversations || !window.conversations.length) {
+      conversationsLoadAppliedRequestId = requestId;
       renderConversationList([]);
       window.conversations = [];
     }
