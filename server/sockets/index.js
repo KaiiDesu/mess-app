@@ -22,6 +22,8 @@ const initializeSocket = (io, authMiddleware) => {
   io.on('connection', (socket) => {
     const userId = socket.user.sub; // Supabase JWT uses 'sub' for user ID
 
+    socket.join(`user:${userId}`);
+
     logger.info('User connected', { userId, socketId: socket.id });
 
     // Update user presence

@@ -11,6 +11,10 @@ const getOtherUserId = (conversation, userId) =>
 const getUserClearTimestamp = (conversation, userId) =>
   conversation.user_1_id === userId ? conversation.user_1_cleared_at : conversation.user_2_cleared_at;
 
+// Shared nickname mode: both participants read/write the same nickname rows.
+// We use a deterministic owner key to stay compatible with existing table constraints.
+const getSharedNicknameOwnerId = (conversation) => conversation?.user_1_id || null;
+
 const canAccessConversation = async (conversationId, userId) => {
   const { data: conversation, error } = await supabase
     .from('conversations')
@@ -26,7 +30,7 @@ const canAccessConversation = async (conversationId, userId) => {
   return { allowed: true, conversation };
 };
 
-const getNicknameForOtherUser = async (conversationId, ownerUserId, targetUserId) => {
+const getNicknameForOtherUser = async (conversationId, sharedOwnerUserId, targetUserId) => {
   if (nicknameTableUnavailable) {
     return null;
   }
@@ -35,7 +39,7 @@ const getNicknameForOtherUser = async (conversationId, ownerUserId, targetUserId
     .from('conversation_nicknames')
     .select('nickname')
     .eq('conversation_id', conversationId)
-    .eq('owner_user_id', ownerUserId)
+    .eq('owner_user_id', sharedOwnerUserId)
     .eq('target_user_id', targetUserId)
     .maybeSingle();
 
@@ -54,7 +58,7 @@ const getNicknameForOtherUser = async (conversationId, ownerUserId, targetUserId
     logger.warn('Nickname lookup failed', {
       error: error.message,
       conversationId,
-      ownerUserId,
+      ownerUserId: sharedOwnerUserId,
       targetUserId
     });
     return null;
@@ -99,13 +103,18 @@ const getConversations = async (req, res) => {
     const enrichedRaw = await Promise.all(
       (conversations || []).map(async (convo) => {
         const otherUserId = getOtherUserId(convo, userId);
+        const sharedNicknameOwnerId = getSharedNicknameOwnerId(convo);
         const clearTimestamp = getUserClearTimestamp(convo, userId);
         const { data: otherUser } = await supabase
           .from('users')
           .select('id, display_name, avatar_url, is_online, status:status_message')
           .eq('id', otherUserId)
           .single();
-        const nickname = await getNicknameForOtherUser(convo.id, userId, otherUserId);
+        const nickname = await getNicknameForOtherUser(
+          convo.id,
+          sharedNicknameOwnerId,
+          otherUserId
+        );
 
         // Compute unread count: messages from the other user that current user has not marked as read.
         let unreadMessagesQuery = supabase
@@ -213,12 +222,17 @@ const getConversation = async (req, res) => {
 
     // Get other user
     const otherUserId = getOtherUserId(conversation, userId);
+    const sharedNicknameOwnerId = getSharedNicknameOwnerId(conversation);
     const { data: otherUser } = await supabase
       .from('users')
       .select('id, display_name, avatar_url, is_online, status:status_message')
       .eq('id', otherUserId)
       .single();
-    const nickname = await getNicknameForOtherUser(conversation.id, userId, otherUserId);
+    const nickname = await getNicknameForOtherUser(
+      conversation.id,
+      sharedNicknameOwnerId,
+      otherUserId
+    );
 
     res.json({
       ...conversation,
@@ -484,6 +498,7 @@ const updateConversationNickname = async (req, res) => {
     const userId = req.user.sub;
     const { id } = req.params;
     const { nickname } = req.body;
+    const io = req.app.get('io');
 
     const access = await canAccessConversation(id, userId);
     if (!access.allowed) {
@@ -495,6 +510,7 @@ const updateConversationNickname = async (req, res) => {
 
     const conversation = access.conversation;
     const targetUserId = getOtherUserId(conversation, userId);
+    const sharedNicknameOwnerId = getSharedNicknameOwnerId(conversation);
     const normalizedNickname = typeof nickname === 'string' ? nickname.trim() : '';
 
     if (!normalizedNickname) {
@@ -502,7 +518,7 @@ const updateConversationNickname = async (req, res) => {
         .from('conversation_nicknames')
         .delete()
         .eq('conversation_id', id)
-        .eq('owner_user_id', userId)
+        .eq('owner_user_id', sharedNicknameOwnerId)
         .eq('target_user_id', targetUserId);
 
       if (deleteError) {
@@ -526,6 +542,28 @@ const updateConversationNickname = async (req, res) => {
         });
       }
 
+      io?.to(id).emit('conversation:nickname_updated', {
+        conversationId: id,
+        targetUserId,
+        nickname: null,
+        updatedBy: userId,
+        updatedAt: new Date().toISOString()
+      });
+      io?.to(`user:${conversation.user_1_id}`).emit('conversation:nickname_updated', {
+        conversationId: id,
+        targetUserId,
+        nickname: null,
+        updatedBy: userId,
+        updatedAt: new Date().toISOString()
+      });
+      io?.to(`user:${conversation.user_2_id}`).emit('conversation:nickname_updated', {
+        conversationId: id,
+        targetUserId,
+        nickname: null,
+        updatedBy: userId,
+        updatedAt: new Date().toISOString()
+      });
+
       return res.json({
         conversationId: id,
         targetUserId,
@@ -538,7 +576,7 @@ const updateConversationNickname = async (req, res) => {
       .upsert(
         {
           conversation_id: id,
-          owner_user_id: userId,
+          owner_user_id: sharedNicknameOwnerId,
           target_user_id: targetUserId,
           nickname: normalizedNickname
         },
@@ -569,6 +607,28 @@ const updateConversationNickname = async (req, res) => {
         message: 'Failed to update nickname'
       });
     }
+
+    io?.to(id).emit('conversation:nickname_updated', {
+      conversationId: upserted.conversation_id,
+      targetUserId: upserted.target_user_id,
+      nickname: upserted.nickname,
+      updatedBy: userId,
+      updatedAt: new Date().toISOString()
+    });
+    io?.to(`user:${conversation.user_1_id}`).emit('conversation:nickname_updated', {
+      conversationId: upserted.conversation_id,
+      targetUserId: upserted.target_user_id,
+      nickname: upserted.nickname,
+      updatedBy: userId,
+      updatedAt: new Date().toISOString()
+    });
+    io?.to(`user:${conversation.user_2_id}`).emit('conversation:nickname_updated', {
+      conversationId: upserted.conversation_id,
+      targetUserId: upserted.target_user_id,
+      nickname: upserted.nickname,
+      updatedBy: userId,
+      updatedAt: new Date().toISOString()
+    });
 
     return res.json({
       conversationId: upserted.conversation_id,

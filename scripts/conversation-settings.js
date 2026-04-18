@@ -127,7 +127,10 @@ async function changeConversationNickname() {
 
   const currentNickname = conversation?.otherUser?.nickname || '';
   const suggested = currentNickname || conversation?.otherUser?.display_name || '';
-  const nextValue = window.prompt('Set a nickname for this person (leave blank to reset):', suggested);
+  const nextValue = window.prompt(
+    'Set a shared nickname for this person (visible to both of you). Leave blank to reset:',
+    suggested
+  );
 
   if (nextValue === null) {
     return;

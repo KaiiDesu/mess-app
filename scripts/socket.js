@@ -622,6 +622,37 @@ function applyThemeFromConversation(conversation) {
   }
 }
 
+function applyConversationNicknameUpdate(payload) {
+  const conversationId = payload?.conversationId;
+  const targetUserId = payload?.targetUserId;
+  if (!conversationId || !targetUserId) return;
+
+  const conversation = (window.conversations || []).find((item) => item.id === conversationId);
+  if (!conversation) return;
+
+  if (conversation?.otherUser?.id === targetUserId) {
+    conversation.otherUser = {
+      ...(conversation.otherUser || {}),
+      nickname: payload?.nickname || null
+    };
+
+    writeCachedConversations(window.conversations);
+    renderConversationList(window.conversations);
+
+    if (window.activeConversationId === conversationId) {
+      const chatName = document.getElementById('chat-name');
+      if (chatName) {
+        chatName.textContent = getConversationDisplayName(conversation);
+      }
+
+      const settingsName = document.getElementById('conv-settings-name');
+      if (settingsName) {
+        settingsName.textContent = getConversationDisplayName(conversation);
+      }
+    }
+  }
+}
+
 function renderConversationList(conversations) {
   const container = document.getElementById('chat-list');
   if (!container) return;
@@ -1290,6 +1321,10 @@ function initSocket() {
         theme_gradient: payload.themeGradient
       });
     }
+  });
+
+  window.appSocket.on('conversation:nickname_updated', (payload) => {
+    applyConversationNicknameUpdate(payload);
   });
 
   window.appSocket.on('friendship:request_received', (payload) => {

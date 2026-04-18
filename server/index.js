@@ -25,6 +25,8 @@ const io = socketIo(server, {
   transports: ['websocket', 'polling']
 });
 
+app.set('io', io);
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '40mb' }));
