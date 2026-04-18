@@ -4,6 +4,7 @@ const PENDING_MEDIA_STORAGE_KEY = 'zap_pending_media_messages';
 const PENDING_MEDIA_MAX_AGE_MS = 3 * 60 * 1000;
 
 window.pendingMediaPreviewUrls = window.pendingMediaPreviewUrls || {};
+window.pendingClipboardMedia = window.pendingClipboardMedia || null;
 
 function setPendingMediaPreviewUrl(clientMessageId, mediaUrl) {
   if (!clientMessageId || !mediaUrl) return;
@@ -196,6 +197,12 @@ async function onMediaFileSelected(event) {
     input.value = '';
   }
 
+  sendMediaFile(file);
+}
+
+async function sendMediaFile(file) {
+  if (!file) return;
+
   if (!window.activeConversationId) {
     window.alert('Open a conversation first.');
     return;
@@ -257,17 +264,98 @@ async function onMediaFileSelected(event) {
         clientMessageId
       });
     }
+
+    return true;
   } catch (error) {
     window.pendingClientMessageIds.delete(clientMessageId);
     removePendingMediaMessage(clientMessageId);
     window.alert(error?.message || 'Failed to send media.');
+    return false;
   }
+}
+
+function getClipboardImageFileFromEvent(event) {
+  const items = event?.clipboardData?.items;
+  if (!items || !items.length) return null;
+
+  for (const item of items) {
+    if (String(item?.type || '').startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) return file;
+    }
+  }
+
+  return null;
+}
+
+function clearPendingClipboardMedia() {
+  const pending = window.pendingClipboardMedia;
+  if (pending?.previewUrl && String(pending.previewUrl).startsWith('blob:')) {
+    URL.revokeObjectURL(pending.previewUrl);
+  }
+
+  window.pendingClipboardMedia = null;
+
+  const bar = document.getElementById('paste-preview-bar');
+  if (bar) {
+    bar.classList.add('hidden');
+    bar.innerHTML = '';
+  }
+}
+
+function showClipboardMediaPreview(file) {
+  const bar = document.getElementById('paste-preview-bar');
+  if (!bar || !file) return;
+
+  clearPendingClipboardMedia();
+
+  const previewUrl = URL.createObjectURL(file);
+  const fileLabel = String(file.name || 'pasted-image.png').trim() || 'pasted-image.png';
+  const mimeType = String(file.type || '').toLowerCase();
+
+  window.pendingClipboardMedia = {
+    file,
+    previewUrl
+  };
+
+  const mediaNode = mimeType.startsWith('video/')
+    ? `<video class="paste-preview-media" src="${previewUrl}" muted playsinline></video>`
+    : `<img class="paste-preview-media" src="${previewUrl}" alt="Pasted image preview">`;
+
+  bar.innerHTML = `<div class="paste-preview-card"><div class="paste-preview-thumb">${mediaNode}</div><div class="paste-preview-info"><div class="paste-preview-label">Pasted from clipboard</div><div class="paste-preview-name">${fileLabel}</div></div><div class="paste-preview-actions"><button type="button" class="paste-preview-btn primary" onclick="sendPastedClipboardMedia()">Send</button><button type="button" class="paste-preview-btn" onclick="cancelPastedClipboardMedia()">Cancel</button></div></div>`;
+  bar.classList.remove('hidden');
+}
+
+function handleMessageInputPaste(event) {
+  const imageFile = getClipboardImageFileFromEvent(event);
+  if (!imageFile) return;
+
+  event.preventDefault();
+  showClipboardMediaPreview(imageFile);
+}
+
+async function sendPastedClipboardMedia() {
+  const pending = window.pendingClipboardMedia;
+  if (!pending?.file) return;
+
+  const sent = await sendMediaFile(pending.file);
+  if (sent) {
+    clearPendingClipboardMedia();
+  }
+}
+
+function cancelPastedClipboardMedia() {
+  clearPendingClipboardMedia();
 }
 
 function triggerMediaPicker() {
   const input = ensureMediaInput();
   input.click();
 }
+
+window.handleMessageInputPaste = handleMessageInputPaste;
+window.sendPastedClipboardMedia = sendPastedClipboardMedia;
+window.cancelPastedClipboardMedia = cancelPastedClipboardMedia;
 
 function openMedia(mediaUrl, fileType) {
   const modal = document.getElementById('media-modal');

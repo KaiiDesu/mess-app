@@ -83,6 +83,7 @@ window.ZapTemplateParts.mainViews = String.raw`
       </div>
 
       <div class="reply-preview-bar hidden" id="reply-preview-bar"></div>
+      <div class="paste-preview-bar hidden" id="paste-preview-bar"></div>
 
       <!-- INPUT BAR -->
       <div class="input-bar" id="input-bar">

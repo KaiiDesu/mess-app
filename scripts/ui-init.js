@@ -274,6 +274,12 @@ document.addEventListener('DOMContentLoaded', () => {
       event.preventDefault();
       msgInput.focus();
     });
+
+    msgInput.addEventListener('paste', (event) => {
+      if (typeof window.handleMessageInputPaste === 'function') {
+        window.handleMessageInputPaste(event);
+      }
+    });
   }
 
   if (messagesContainer && msgInput) {
