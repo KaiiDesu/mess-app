@@ -9,11 +9,14 @@
   var apiFromMobileConfig = normalizeBaseUrl(window.ZAP_MOBILE_API_URL);
 
   var resolvedApiBase =
-    apiFromQuery || apiFromStorage || apiFromMobileConfig || window.ZAP_API_URL || 'http://localhost:3000';
+    apiFromQuery || apiFromMobileConfig || apiFromStorage || window.ZAP_API_URL || 'http://localhost:3000';
 
   // Persist query-provided API endpoint so users only need to pass it once.
   if (apiFromQuery) {
     localStorage.setItem('zap_api_url', resolvedApiBase);
+  } else if (apiFromMobileConfig && apiFromStorage !== apiFromMobileConfig) {
+    // Keep runtime storage aligned with mobile builds to avoid stale localhost overrides.
+    localStorage.setItem('zap_api_url', apiFromMobileConfig);
   }
 
   window.ZAP_API_URL = normalizeBaseUrl(resolvedApiBase);
