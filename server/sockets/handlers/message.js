@@ -3,6 +3,18 @@ const supabase = require('../../config/supabase');
 const logger = require('../../utils/logger');
 const { v4: uuid } = require('uuid');
 
+function sanitizeReplyPreview(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const id = String(raw.id || '').trim();
+  if (!id) return null;
+
+  const senderName = String(raw.senderName || 'User').trim().slice(0, 80) || 'User';
+  const snippet = String(raw.snippet || 'Message').replace(/\s+/g, ' ').trim().slice(0, 180) || 'Message';
+
+  return { id, senderName, snippet };
+}
+
 const handleSendMessage = async (socket, data, userId) => {
   try {
     const {
@@ -13,7 +25,8 @@ const handleSendMessage = async (socket, data, userId) => {
       mediaId,
       mediaUrl,
       fileName,
-      parentMessageId
+      parentMessageId,
+      replyPreview
     } = data;
 
     // Validate input
@@ -44,7 +57,7 @@ const handleSendMessage = async (socket, data, userId) => {
     let resolvedMediaId = mediaId || null;
     let resolvedContentType = contentType || (mediaUrl ? 'image' : 'text');
     let resolvedParentMessageId = null;
-    let replyTo = null;
+    let replyTo = sanitizeReplyPreview(replyPreview);
 
     if (resolvedMediaId) {
       const { data: mediaRecord, error: mediaError } = await supabase
@@ -121,7 +134,6 @@ const handleSendMessage = async (socket, data, userId) => {
 
     if (parentColumnMissing) {
       resolvedParentMessageId = null;
-      replyTo = null;
       ({ data: message, error: msgError } = await supabase
         .from('messages')
         .insert({

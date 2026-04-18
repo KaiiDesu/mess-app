@@ -1404,7 +1404,8 @@ function sendMessage() {
       content: text,
       contentType: 'text',
       clientMessageId,
-      parentMessageId: replyParentMessageId || null
+      parentMessageId: replyParentMessageId || null,
+      replyPreview: replyContext || null
     });
   } else {
     // Fallback for local-only preview when no active realtime conversation is set.
