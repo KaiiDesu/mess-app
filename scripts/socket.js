@@ -189,6 +189,7 @@ function applyConversationSwipeAction(conversationId, action) {
     return;
   }
 
+      localStorage.getItem('token') ||
   if (action === 'restrict') {
     if (window.appSocket?.connected) {
       emitSocketEvent('conversation:mute', { conversationId });
