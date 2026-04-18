@@ -256,10 +256,23 @@ function getInitialAvatar(name) {
   return text ? text.charAt(0).toUpperCase() : '🙂';
 }
 
+function parseServerDateToDeviceLocal(value) {
+  if (!value) return new Date(NaN);
+  if (value instanceof Date) return value;
+
+  const raw = String(value).trim();
+  if (!raw) return new Date(NaN);
+
+  const normalized = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized);
+  const candidate = hasTimezone ? normalized : `${normalized}Z`;
+  return new Date(candidate);
+}
+
 function formatChatTimeLabel(isoDate) {
   if (!isoDate) return '';
 
-  const date = new Date(isoDate);
+  const date = parseServerDateToDeviceLocal(isoDate);
   if (Number.isNaN(date.getTime())) return '';
 
   const now = new Date();
@@ -733,8 +746,8 @@ function nowForInboundQueue() {
 }
 
 function compareInboundPayloadChronologically(a, b) {
-  const aTime = Date.parse(a?.created_at || a?.createdAt || '') || 0;
-  const bTime = Date.parse(b?.created_at || b?.createdAt || '') || 0;
+  const aTime = parseServerDateToDeviceLocal(a?.created_at || a?.createdAt || '').getTime() || 0;
+  const bTime = parseServerDateToDeviceLocal(b?.created_at || b?.createdAt || '').getTime() || 0;
   if (aTime !== bTime) {
     return aTime - bTime;
   }

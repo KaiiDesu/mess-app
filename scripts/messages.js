@@ -234,14 +234,27 @@ function getCurrentUserId() {
   }
 }
 
+function parseServerDateToDeviceLocal(value) {
+  if (!value) return new Date(NaN);
+  if (value instanceof Date) return value;
+
+  const raw = String(value).trim();
+  if (!raw) return new Date(NaN);
+
+  const normalized = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized);
+  const candidate = hasTimezone ? normalized : `${normalized}Z`;
+  return new Date(candidate);
+}
+
 function formatMessageTime(value) {
-  const date = value ? new Date(value) : new Date();
+  const date = value ? parseServerDateToDeviceLocal(value) : new Date();
   const safe = Number.isNaN(date.getTime()) ? new Date() : date;
   return safe.getHours() + ':' + String(safe.getMinutes()).padStart(2, '0');
 }
 
 function formatDeliveredOverlayTime(value) {
-  const date = value ? new Date(value) : new Date();
+  const date = value ? parseServerDateToDeviceLocal(value) : new Date();
   const safe = Number.isNaN(date.getTime()) ? new Date() : date;
 
   let hours = safe.getHours();
@@ -525,7 +538,7 @@ function setMessageRowDeliveryStatus(row, status) {
 function getMessageRowTimestamp(row) {
   if (!row) return 0;
   const raw = row.dataset.deliveredAt || row.dataset.createdAt || '';
-  const millis = Date.parse(raw);
+  const millis = parseServerDateToDeviceLocal(raw).getTime();
   return Number.isFinite(millis) ? millis : 0;
 }
 
@@ -1034,7 +1047,9 @@ function renderConversationMessages(messages) {
   const currentUserId = getCurrentUserId();
   const otherUserId = getActiveOtherUserId();
   const ordered = [...messages].sort((a, b) => {
-    const timeDiff = new Date(a.created_at) - new Date(b.created_at);
+    const timeDiff =
+      parseServerDateToDeviceLocal(a.created_at).getTime() -
+      parseServerDateToDeviceLocal(b.created_at).getTime();
     if (timeDiff !== 0) return timeDiff;
     return String(a.id || '').localeCompare(String(b.id || ''));
   });
