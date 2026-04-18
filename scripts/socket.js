@@ -19,9 +19,14 @@ window.userPresenceById = window.userPresenceById || {};
 let activeConversationSwipeRow = null;
 let conversationSwipePointer = null;
 let suppressConversationClickUntil = 0;
+let conversationsRefreshTimer = null;
+let conversationsRefreshInFlight = null;
+let lastConversationsRefreshAt = 0;
 
 const CONVERSATION_SWIPE_ACTION_WIDTH = 240;
 const CONVERSATION_SWIPE_HAPTIC_SUPPORTED = Boolean(navigator.vibrate);
+const CONVERSATIONS_REFRESH_INTERVAL_MS = 12000;
+const CONVERSATIONS_REFRESH_MIN_GAP_MS = 3000;
 
 function areReadReceiptsEnabled() {
   return window.__zapReadReceiptsEnabled !== false;
@@ -853,7 +858,8 @@ function markMessagesAsRead(conversationId, messages) {
   });
 }
 
-async function loadConversations() {
+async function loadConversations(options = {}) {
+  const useCache = options.useCache !== false;
   const token = getSocketToken();
   if (!token) {
     renderConversationList([]);
@@ -861,15 +867,17 @@ async function loadConversations() {
     return;
   }
 
-  const cached = readCachedConversations();
-  if (cached.length) {
-    window.conversations = cached.map((conversation) => ({
-      ...conversation,
-      unreadCount: Number(conversation.unreadCount || conversation.unread_count || 0)
-    }));
-    renderConversationList(window.conversations);
-  } else {
-    renderConversationListLoadingState();
+  if (useCache) {
+    const cached = readCachedConversations();
+    if (cached.length) {
+      window.conversations = cached.map((conversation) => ({
+        ...conversation,
+        unreadCount: Number(conversation.unreadCount || conversation.unread_count || 0)
+      }));
+      renderConversationList(window.conversations);
+    } else {
+      renderConversationListLoadingState();
+    }
   }
 
   try {
@@ -908,6 +916,50 @@ async function loadConversations() {
       window.conversations = [];
     }
   }
+}
+
+function shouldRunPeriodicConversationRefresh() {
+  if (!getSocketToken()) return false;
+  if (!isAppForeground()) return false;
+  if (navigator.onLine === false) return false;
+  if (typeof currentView !== 'undefined' && currentView === 'view-login') return false;
+  return true;
+}
+
+async function refreshConversationsPeriodically(force = false) {
+  if (!force && !shouldRunPeriodicConversationRefresh()) {
+    return;
+  }
+
+  const now = Date.now();
+  if (!force && now - lastConversationsRefreshAt < CONVERSATIONS_REFRESH_MIN_GAP_MS) {
+    return;
+  }
+
+  if (conversationsRefreshInFlight) {
+    return conversationsRefreshInFlight;
+  }
+
+  lastConversationsRefreshAt = now;
+  conversationsRefreshInFlight = loadConversations({ useCache: false }).finally(() => {
+    conversationsRefreshInFlight = null;
+  });
+
+  return conversationsRefreshInFlight;
+}
+
+function startConversationsRefreshLoop() {
+  if (conversationsRefreshTimer) return;
+
+  conversationsRefreshTimer = setInterval(() => {
+    refreshConversationsPeriodically(false);
+  }, CONVERSATIONS_REFRESH_INTERVAL_MS);
+}
+
+function stopConversationsRefreshLoop() {
+  if (!conversationsRefreshTimer) return;
+  clearInterval(conversationsRefreshTimer);
+  conversationsRefreshTimer = null;
 }
 
 async function fetchConversationMessages(conversationId) {
@@ -1206,6 +1258,7 @@ function enqueueInboundMessagePayload(payload) {
 
 function initSocket() {
   ensureAppForegroundTracking();
+  startConversationsRefreshLoop();
 
   if (typeof io === 'undefined') {
     console.warn('[socket] socket.io client library not loaded');
@@ -1226,6 +1279,7 @@ function initSocket() {
   window.appSocket.on('connect', () => {
     console.log('[socket] connected', window.appSocket.id);
     loadConversations();
+    refreshConversationsPeriodically(true);
     emitPresenceNetworkState();
     emitPresenceAppState();
     startPresenceHeartbeat();
@@ -1397,12 +1451,18 @@ function initSocket() {
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+      refreshConversationsPeriodically(true);
       syncReadsIfVisible();
     }
   });
 
   window.addEventListener('focus', () => {
+    refreshConversationsPeriodically(true);
     syncReadsIfVisible();
+  });
+
+  window.addEventListener('online', () => {
+    refreshConversationsPeriodically(true);
   });
 }
 

@@ -242,6 +242,19 @@ function shouldNotifyForIncomingMessage(payload) {
   return senderId !== currentUserId;
 }
 
+function isConversationVisibleForNotification(conversationId) {
+  if (!conversationId) return false;
+
+  const activeConversationId = window.activeConversationId || null;
+  const inChatView = typeof currentView !== 'undefined' && currentView === 'view-chat';
+  const sameConversation = activeConversationId === conversationId;
+  const appForeground = window.__zapAppForeground !== false;
+  const docVisible = document.visibilityState === 'visible';
+  const hasFocus = typeof document.hasFocus === 'function' ? document.hasFocus() : true;
+
+  return inChatView && sameConversation && appForeground && docVisible && hasFocus;
+}
+
 function notifyIncomingMessage(payload) {
   if (!payload || !shouldNotifyForIncomingMessage(payload)) return;
 
@@ -249,10 +262,7 @@ function notifyIncomingMessage(payload) {
   const senderName = getNotificationSenderName(payload);
   const messageText = getNotificationPreviewText(payload);
 
-  const inVisibleActiveConversation =
-    typeof isConversationCurrentlyVisibleOnScreen === 'function'
-      ? isConversationCurrentlyVisibleOnScreen(conversationId)
-      : false;
+  const inVisibleActiveConversation = isConversationVisibleForNotification(conversationId);
 
   if (!inVisibleActiveConversation) {
     showInAppNotificationToast({ senderName, messageText, conversationId });
