@@ -331,8 +331,15 @@ function getMessageContentHostNode(row) {
   return [...row.children].find((child) => !child.classList.contains('msg-avatar')) || null;
 }
 
-function getReplySnippetForMessage(row) {
+function normalizeMessageTextValue(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function getPlainMessageTextFromRow(row) {
   if (!row) return '';
+
+  const storedText = normalizeMessageTextValue(row.dataset.messageText || '');
+  if (storedText) return storedText;
 
   const bubble = row.querySelector('.bubble');
   if (!bubble) return '';
@@ -341,7 +348,15 @@ function getReplySnippetForMessage(row) {
   if (bubble.matches('.media-bubble[data-media-type="video"]')) return 'Video';
   if (bubble.classList.contains('voice-bubble')) return 'Voice message';
 
-  const text = String(bubble.textContent || '').replace(/\s+/g, ' ').trim();
+  const clone = bubble.cloneNode(true);
+  clone.querySelectorAll('.reply-ghost, .message-link-preview').forEach((node) => node.remove());
+  return normalizeMessageTextValue(clone.textContent || '');
+}
+
+function getReplySnippetForMessage(row) {
+  if (!row) return '';
+
+  const text = getPlainMessageTextFromRow(row);
   if (!text) return 'Message';
   return text.length > 80 ? `${text.slice(0, 80)}...` : text;
 }
@@ -666,8 +681,7 @@ function hideMessageActionSheet() {
 
 async function copySelectedMessageText() {
   const row = getMessageRowById(window.activeMessageActionId);
-  const bubble = row?.querySelector('.bubble');
-  const messageText = bubble ? String(bubble.textContent || '').trim() : '';
+  const messageText = getPlainMessageTextFromRow(row);
 
   if (!messageText) {
     hideMessageActionSheet();
@@ -1470,6 +1484,9 @@ function addMessage(text, isMe, isVoice, clientMessageId, meta = {}) {
 
   if (isMe && deliveryStatus) {
     row.dataset.deliveryStatus = deliveryStatus;
+  }
+  if (contentType === 'text') {
+    row.dataset.messageText = String(text || '');
   }
   if (showVideoLoading) {
     row.dataset.videoPending = '1';

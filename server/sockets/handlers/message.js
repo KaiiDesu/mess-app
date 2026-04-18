@@ -3,6 +3,8 @@ const supabase = require('../../config/supabase');
 const logger = require('../../utils/logger');
 const { v4: uuid } = require('uuid');
 
+let replyRelationTableUnavailable = false;
+
 function sanitizeReplyPreview(raw) {
   if (!raw || typeof raw !== 'object') return null;
 
@@ -13,6 +15,41 @@ function sanitizeReplyPreview(raw) {
   const snippet = String(raw.snippet || 'Message').replace(/\s+/g, ' ').trim().slice(0, 180) || 'Message';
 
   return { id, senderName, snippet };
+}
+
+async function persistReplyRelation(messageId, parentMessageId, replyTo) {
+  if (!messageId || !parentMessageId || replyRelationTableUnavailable) return;
+
+  const { error } = await supabase
+    .from('message_replies')
+    .upsert(
+      {
+        message_id: messageId,
+        parent_message_id: parentMessageId,
+        parent_sender_name: String(replyTo?.senderName || 'User').slice(0, 80),
+        parent_snippet: String(replyTo?.snippet || 'Message').slice(0, 280)
+      },
+      { onConflict: 'message_id' }
+    );
+
+  if (!error) return;
+
+  const tableMissing =
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    String(error.message || '').includes('message_replies');
+
+  if (tableMissing) {
+    replyRelationTableUnavailable = true;
+    logger.warn('Reply persistence fallback disabled: message_replies table is missing');
+    return;
+  }
+
+  logger.warn('Failed to persist reply relation', {
+    messageId,
+    parentMessageId,
+    error: error.message
+  });
 }
 
 const handleSendMessage = async (socket, data, userId) => {
@@ -133,7 +170,6 @@ const handleSendMessage = async (socket, data, userId) => {
         String(msgError.message || '').includes('parent_message_id'));
 
     if (parentColumnMissing) {
-      resolvedParentMessageId = null;
       ({ data: message, error: msgError } = await supabase
         .from('messages')
         .insert({
@@ -155,6 +191,10 @@ const handleSendMessage = async (socket, data, userId) => {
         message: 'Failed to send message',
         clientMessageId
       });
+    }
+
+    if (resolvedParentMessageId && replyTo) {
+      await persistReplyRelation(message.id, resolvedParentMessageId, replyTo);
     }
 
     // Get sender info

@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const { v4: uuid } = require('uuid');
 
 let nicknameTableUnavailable = false;
+let replyRelationTableUnavailable = false;
 
 const getOtherUserId = (conversation, userId) =>
   conversation.user_1_id === userId ? conversation.user_2_id : conversation.user_1_id;
@@ -324,6 +325,35 @@ const getMessages = async (req, res) => {
       .select('message_id, reader_id')
       .in('message_id', messageIds);
 
+    let replyRelationByMessageId = new Map();
+    if (messageIds.length && !replyRelationTableUnavailable) {
+      const { data: replyRows, error: replyRowsError } = await supabase
+        .from('message_replies')
+        .select('message_id, parent_message_id, parent_sender_name, parent_snippet')
+        .in('message_id', messageIds);
+
+      if (replyRowsError) {
+        const tableMissing =
+          replyRowsError.code === '42P01' ||
+          replyRowsError.code === 'PGRST205' ||
+          String(replyRowsError.message || '').includes('message_replies');
+
+        if (tableMissing) {
+          replyRelationTableUnavailable = true;
+          logger.warn('Reply fallback load disabled: message_replies table is missing');
+        } else {
+          logger.warn('Failed to load message reply fallback rows', {
+            error: replyRowsError.message,
+            conversationId: id
+          });
+        }
+      } else {
+        replyRelationByMessageId = new Map(
+          (replyRows || []).map((row) => [row.message_id, row])
+        );
+      }
+    }
+
     // Attach receipts to messages
     const messagesWithReceipts = (messages || []).map((msg) => ({
       ...msg,
@@ -332,7 +362,9 @@ const getMessages = async (req, res) => {
     }));
 
     const parentMessageIds = [...new Set(
-      messagesWithReceipts.map((msg) => msg.parent_message_id).filter(Boolean)
+      messagesWithReceipts
+        .map((msg) => msg.parent_message_id || replyRelationByMessageId.get(msg.id)?.parent_message_id)
+        .filter(Boolean)
     )];
 
     let parentMessageById = new Map();
@@ -366,10 +398,26 @@ const getMessages = async (req, res) => {
       );
     }
 
-    const messagesWithReplyPreview = messagesWithReceipts.map((msg) => ({
-      ...msg,
-      reply_to: msg.parent_message_id ? parentMessageById.get(msg.parent_message_id) || null : null
-    }));
+    const messagesWithReplyPreview = messagesWithReceipts.map((msg) => {
+      const fallbackRelation = replyRelationByMessageId.get(msg.id) || null;
+      const parentMessageId = msg.parent_message_id || fallbackRelation?.parent_message_id || null;
+
+      let replyPreview = parentMessageId ? parentMessageById.get(parentMessageId) || null : null;
+
+      if (!replyPreview && fallbackRelation && parentMessageId) {
+        replyPreview = {
+          id: parentMessageId,
+          senderId: null,
+          senderName: String(fallbackRelation.parent_sender_name || 'User').trim() || 'User',
+          snippet: String(fallbackRelation.parent_snippet || 'Message').trim() || 'Message'
+        };
+      }
+
+      return {
+        ...msg,
+        reply_to: replyPreview
+      };
+    });
 
     res.json({
       messages: messagesWithReplyPreview,

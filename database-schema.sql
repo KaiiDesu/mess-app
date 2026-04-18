@@ -28,10 +28,10 @@
     is_active BOOLEAN DEFAULT TRUE
     );
 
-    CREATE INDEX idx_users_username ON users(username);
-    CREATE INDEX idx_users_email ON users(email);
-    CREATE INDEX idx_users_auth_id ON users(auth_id);
-    CREATE INDEX idx_users_display_name_trgm ON users USING GIN(display_name gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_auth_id ON users(auth_id);
+    CREATE INDEX IF NOT EXISTS idx_users_display_name_trgm ON users USING GIN(display_name gin_trgm_ops);
 
     -- ========================================
     -- FRIENDSHIPS TABLE
@@ -48,14 +48,14 @@
     );
 
     -- Unique friendship index (bidirectional)
-    CREATE UNIQUE INDEX idx_friendships_unique ON friendships(
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_unique ON friendships(
         LEAST(sender_id, receiver_id),
         GREATEST(sender_id, receiver_id)
     );
     
-    CREATE INDEX idx_friendships_sender ON friendships(sender_id);
-    CREATE INDEX idx_friendships_receiver ON friendships(receiver_id);
-    CREATE INDEX idx_friendships_status ON friendships(status);
+    CREATE INDEX IF NOT EXISTS idx_friendships_sender ON friendships(sender_id);
+    CREATE INDEX IF NOT EXISTS idx_friendships_receiver ON friendships(receiver_id);
+    CREATE INDEX IF NOT EXISTS idx_friendships_status ON friendships(status);
 
     -- ========================================
     -- CONVERSATIONS TABLE
@@ -82,14 +82,14 @@
     );
 
     -- Unique conversation index (bidirectional)
-    CREATE UNIQUE INDEX idx_conversations_unique ON conversations(
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_unique ON conversations(
         LEAST(user_1_id, user_2_id),
         GREATEST(user_1_id, user_2_id)
     );
     
-    CREATE INDEX idx_conversations_user_1 ON conversations(user_1_id);
-    CREATE INDEX idx_conversations_user_2 ON conversations(user_2_id);
-    CREATE INDEX idx_conversations_archived ON conversations(is_archived);
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_1 ON conversations(user_1_id);
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_2 ON conversations(user_2_id);
+    CREATE INDEX IF NOT EXISTS idx_conversations_archived ON conversations(is_archived);
 
     -- ========================================
     -- MESSAGES TABLE
@@ -106,6 +106,9 @@
     
     -- Media references
     media_id UUID, -- references media table
+
+    -- Reply/thread references
+    parent_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
     
     -- Metadata
     is_edited BOOLEAN DEFAULT FALSE,
@@ -116,10 +119,31 @@
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE INDEX idx_messages_conversation ON messages(conversation_id);
-    CREATE INDEX idx_messages_sender ON messages(sender_id);
-    CREATE INDEX idx_messages_created_at ON messages(created_at);
-    CREATE INDEX idx_messages_content_type ON messages(content_type);
+    -- Existing databases may already have the messages table without this column.
+    ALTER TABLE messages
+    ADD COLUMN IF NOT EXISTS parent_message_id UUID REFERENCES messages(id) ON DELETE SET NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_content_type ON messages(content_type);
+    CREATE INDEX IF NOT EXISTS idx_messages_parent_message ON messages(parent_message_id);
+
+    -- Fallback reply relation table for deployments missing messages.parent_message_id.
+    -- This keeps reply quotes durable across reloads even before parent column migration is applied.
+    CREATE TABLE IF NOT EXISTS message_replies (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    parent_message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    parent_sender_name VARCHAR(80),
+    parent_snippet VARCHAR(280),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT unique_message_reply UNIQUE (message_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_message_replies_message ON message_replies(message_id);
+    CREATE INDEX IF NOT EXISTS idx_message_replies_parent ON message_replies(parent_message_id);
 
     -- ========================================
     -- MESSAGE_READ_RECEIPTS TABLE
@@ -133,8 +157,8 @@
     CONSTRAINT unique_read_receipt UNIQUE (message_id, reader_id)
     );
 
-    CREATE INDEX idx_read_receipts_message ON message_read_receipts(message_id);
-    CREATE INDEX idx_read_receipts_reader ON message_read_receipts(reader_id);
+    CREATE INDEX IF NOT EXISTS idx_read_receipts_message ON message_read_receipts(message_id);
+    CREATE INDEX IF NOT EXISTS idx_read_receipts_reader ON message_read_receipts(reader_id);
 
     -- ========================================
     -- MESSAGE_REACTIONS TABLE
@@ -149,8 +173,8 @@
     CONSTRAINT unique_reaction UNIQUE (message_id, user_id, emoji)
     );
 
-    CREATE INDEX idx_reactions_message ON message_reactions(message_id);
-    CREATE INDEX idx_reactions_user ON message_reactions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reactions_message ON message_reactions(message_id);
+    CREATE INDEX IF NOT EXISTS idx_reactions_user ON message_reactions(user_id);
 
     -- ========================================
     -- MEDIA TABLE
@@ -179,8 +203,8 @@
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE INDEX idx_media_uploader ON media(uploader_id);
-    CREATE INDEX idx_media_file_type ON media(file_type);
+    CREATE INDEX IF NOT EXISTS idx_media_uploader ON media(uploader_id);
+    CREATE INDEX IF NOT EXISTS idx_media_file_type ON media(file_type);
 
     -- ========================================
     -- TYPING_INDICATORS TABLE (transient, TTL recommended)
@@ -194,8 +218,8 @@
     CONSTRAINT unique_typing UNIQUE (conversation_id, user_id)
     );
 
-    CREATE INDEX idx_typing_conversation ON typing_indicators(conversation_id);
-    CREATE INDEX idx_typing_user ON typing_indicators(user_id);
+    CREATE INDEX IF NOT EXISTS idx_typing_conversation ON typing_indicators(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_typing_user ON typing_indicators(user_id);
 
     -- ========================================
     -- PUSH_NOTIFICATION_TOKENS TABLE
@@ -215,8 +239,8 @@
     last_used_at TIMESTAMP
     );
 
-    CREATE INDEX idx_push_tokens_user ON push_notification_tokens(user_id);
-    CREATE INDEX idx_push_tokens_device ON push_notification_tokens(device_id);
+    CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_notification_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_push_tokens_device ON push_notification_tokens(device_id);
 
     -- ========================================
     -- NOTIFICATIONS TABLE
@@ -242,9 +266,9 @@
     read_at TIMESTAMP
     );
 
-    CREATE INDEX idx_notifications_user ON notifications(user_id);
-    CREATE INDEX idx_notifications_type ON notifications(type);
-    CREATE INDEX idx_notifications_is_read ON notifications(is_read);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+    CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 
     -- ========================================
     -- AUDIT_LOG TABLE (optional, for debugging/compliance)
@@ -260,9 +284,9 @@
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE INDEX idx_audit_user ON audit_log(user_id);
-    CREATE INDEX idx_audit_action ON audit_log(action);
-    CREATE INDEX idx_audit_created_at ON audit_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+    CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at);
 
     -- ========================================
     -- VIEWS (for convenience)
@@ -320,11 +344,13 @@
     -- etc.
 
     -- Users can read their own profile
+    DROP POLICY IF EXISTS "Users can read own profile" ON users;
     CREATE POLICY "Users can read own profile"
     ON users FOR SELECT
     USING (auth.uid() = auth_id);
 
     -- Users can read profiles of friends
+    DROP POLICY IF EXISTS "Users can read friend profiles" ON users;
     CREATE POLICY "Users can read friend profiles"
     ON users FOR SELECT
     USING (
@@ -339,16 +365,19 @@
     );
 
     -- Users can read conversations they're part of
+    DROP POLICY IF EXISTS "Users can read own conversations" ON conversations;
     CREATE POLICY "Users can read own conversations"
     ON conversations FOR SELECT
     USING (user_1_id = auth.uid() OR user_2_id = auth.uid());
 
     -- Users can insert conversations
+    DROP POLICY IF EXISTS "Users can create conversations" ON conversations;
     CREATE POLICY "Users can create conversations"
     ON conversations FOR INSERT
     WITH CHECK (user_1_id = auth.uid() OR user_2_id = auth.uid());
 
     -- Users can read messages from conversations they're part of
+    DROP POLICY IF EXISTS "Users can read conversation messages" ON messages;
     CREATE POLICY "Users can read conversation messages"
     ON messages FOR SELECT
     USING (
@@ -359,6 +388,7 @@
     );
 
     -- Users can insert messages to conversations they're part of
+    DROP POLICY IF EXISTS "Users can send messages" ON messages;
     CREATE POLICY "Users can send messages"
     ON messages FOR INSERT
     WITH CHECK (
@@ -370,11 +400,13 @@
     );
 
     -- Users can read friendships involving them
+    DROP POLICY IF EXISTS "Users can read own friendships" ON friendships;
     CREATE POLICY "Users can read own friendships"
     ON friendships FOR SELECT
     USING (sender_id = auth.uid() OR receiver_id = auth.uid());
 
     -- Users can create friend requests
+    DROP POLICY IF EXISTS "Users can send friend requests" ON friendships;
     CREATE POLICY "Users can send friend requests"
     ON friendships FOR INSERT
     WITH CHECK (sender_id = auth.uid());
@@ -392,6 +424,7 @@
     END;
     $$ LANGUAGE plpgsql;
 
+    DROP TRIGGER IF EXISTS trigger_users_updated_at ON users;
     CREATE TRIGGER trigger_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW
@@ -408,6 +441,7 @@
     END;
     $$ LANGUAGE plpgsql;
 
+    DROP TRIGGER IF EXISTS trigger_conversation_update_on_message ON messages;
     CREATE TRIGGER trigger_conversation_update_on_message
     AFTER INSERT ON messages
     FOR EACH ROW
