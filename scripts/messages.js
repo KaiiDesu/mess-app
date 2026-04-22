@@ -9,6 +9,7 @@ window.replyingToMessageId = window.replyingToMessageId || null;
 window.replyingToMessageContext = window.replyingToMessageContext || null;
 window.pendingIncomingMessagesDuringLoad = window.pendingIncomingMessagesDuringLoad || [];
 window.pendingSeenMessageIds = window.pendingSeenMessageIds || new Set();
+window.pendingOutgoingMessages = window.pendingOutgoingMessages || [];
 
 let lastTypingEmitAt = 0;
 let hasActiveTypingSignal = false;
@@ -1411,6 +1412,42 @@ function onInputChange(el) {
   }
 }
 
+function queueOutgoingMessageForRetry(payload) {
+  if (!payload?.clientMessageId) return;
+
+  const queue = Array.isArray(window.pendingOutgoingMessages) ? window.pendingOutgoingMessages : [];
+  const exists = queue.some((item) => item?.clientMessageId === payload.clientMessageId);
+  if (exists) {
+    window.pendingOutgoingMessages = queue;
+    return;
+  }
+
+  queue.push(payload);
+  window.pendingOutgoingMessages = queue;
+}
+
+function flushPendingOutgoingMessages() {
+  if (!window.appSocket || !window.appSocket.connected) return;
+
+  const queue = Array.isArray(window.pendingOutgoingMessages) ? [...window.pendingOutgoingMessages] : [];
+  if (!queue.length) return;
+
+  const keep = [];
+  queue.forEach((payload) => {
+    if (!payload?.clientMessageId || !payload?.conversationId) return;
+
+    if (!window.appSocket || !window.appSocket.connected) {
+      keep.push(payload);
+      return;
+    }
+
+    emitSocketEvent('message:send', payload);
+    updateMessageDeliveryStatusByClientId(payload.clientMessageId, 'Sent');
+  });
+
+  window.pendingOutgoingMessages = keep;
+}
+
 function sendMessage() {
   const input = document.getElementById('msg-input');
   if (!input) return;
@@ -1422,31 +1459,38 @@ function sendMessage() {
   const clientMessageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const replyContext = window.replyingToMessageContext;
   const replyParentMessageId = window.replyingToMessageId;
+  const outboundPayload = {
+    conversationId,
+    content: text,
+    contentType: 'text',
+    clientMessageId,
+    parentMessageId: replyParentMessageId || null,
+    replyPreview: replyContext || null
+  };
 
   if (hasSocket && conversationId) {
     window.pendingClientMessageIds.add(clientMessageId);
 
     // Optimistically render immediately on sender side.
     const insertedOwnRow = addMessage(text, true, false, clientMessageId, {
-      replyTo: replyContext || null
+      replyTo: replyContext || null,
+      deliveryStatus: 'Sent'
     });
     scrollOwnMessageRowIntoView(insertedOwnRow);
 
-    emitSocketEvent('message:send', {
-      conversationId,
-      content: text,
-      contentType: 'text',
-      clientMessageId,
-      parentMessageId: replyParentMessageId || null,
-      replyPreview: replyContext || null
-    });
+    emitSocketEvent('message:send', outboundPayload);
   } else {
-    // Fallback for local-only preview when no active realtime conversation is set.
+    // Queue-and-retry when realtime socket is temporarily unavailable.
     const insertedOwnRow = addMessage(text, true, false, clientMessageId, {
-      replyTo: replyContext || null
+      replyTo: replyContext || null,
+      deliveryStatus: conversationId ? 'Sending' : 'Sent'
     });
     scrollOwnMessageRowIntoView(insertedOwnRow);
-    if (!conversationId) {
+
+    if (conversationId) {
+      window.pendingClientMessageIds.add(clientMessageId);
+      queueOutgoingMessageForRetry(outboundPayload);
+    } else {
       console.warn('[chat] No activeConversationId. Call joinConversation(conversationId) first.');
     }
   }
@@ -1965,6 +2009,7 @@ document.addEventListener('click', (event) => {
 
 window.handleIncomingSocketMessage = handleIncomingSocketMessage;
 window.handleMessageReadReceipt = handleMessageReadReceipt;
+window.flushPendingOutgoingMessages = flushPendingOutgoingMessages;
 window.resetChatForRealtimeTest = resetChatForRealtimeTest;
 window.showRemoteTypingIndicator = showRemoteTypingIndicator;
 window.hideRemoteTypingIndicator = hideRemoteTypingIndicator;

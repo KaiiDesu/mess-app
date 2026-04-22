@@ -1327,6 +1327,9 @@ function initSocket() {
     emitPresenceAppState();
     startPresenceHeartbeat();
     syncReadsIfVisible();
+    if (typeof window.flushPendingOutgoingMessages === 'function') {
+      window.flushPendingOutgoingMessages();
+    }
   });
 
   window.appSocket.on('connect_error', (err) => {
