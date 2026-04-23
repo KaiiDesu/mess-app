@@ -1,3 +1,69 @@
+const MAIN_TAB_VIEWS = ['view-home', 'view-friends', 'view-profile'];
+
+function syncBottomNavActive(viewId) {
+  const activeIndexByView = {
+    'view-home': 0,
+    'view-friends': 1,
+    'view-profile': 2
+  };
+
+  const activeIndex = activeIndexByView[viewId];
+  if (typeof activeIndex !== 'number') return;
+
+  document.querySelectorAll('.bottom-nav').forEach((nav) => {
+    const items = [...nav.querySelectorAll('.nav-item')];
+    items.forEach((item) => item.classList.remove('active'));
+    if (items[activeIndex]) {
+      items[activeIndex].classList.add('active');
+    }
+  });
+}
+
+function getMainTabContentLayer(view) {
+  if (!view) return null;
+
+  let layer = view.querySelector(':scope > .tab-transition-layer');
+  if (layer) return layer;
+
+  layer = document.createElement('div');
+  layer.className = 'tab-transition-layer';
+
+  const nav = view.querySelector(':scope > .bottom-nav');
+  const children = [...view.children];
+  children.forEach((child) => {
+    if (child === nav) return;
+    layer.appendChild(child);
+  });
+
+  if (nav) {
+    view.insertBefore(layer, nav);
+  } else {
+    view.appendChild(layer);
+  }
+
+  return layer;
+}
+
+function ensureMainTabTransitionLayers() {
+  MAIN_TAB_VIEWS.forEach((viewId) => {
+    const view = document.getElementById(viewId);
+    if (!view) return;
+
+    const isActiveMainView = currentView === viewId;
+
+    // Keep main-tab containers stationary; animate only the inner transition layer.
+    view.classList.remove('hidden', 'slide-left');
+    view.classList.toggle('tab-hidden', !isActiveMainView);
+
+    const layer = getMainTabContentLayer(view);
+    if (!layer) return;
+
+    const shouldBeHidden = view.classList.contains('tab-hidden');
+    layer.classList.toggle('hidden', shouldBeHidden);
+    layer.classList.remove('slide-left');
+  });
+}
+
 function navigate(viewId) {
   const current = document.getElementById(currentView);
   const next = document.getElementById(viewId);
@@ -23,21 +89,72 @@ function navigate(viewId) {
     }
   }
 
-  const goingBack = viewId === 'view-home' || viewId === 'view-login' || viewId === 'view-register';
-  if (goingBack) {
-    current.classList.add('hidden');
-    current.classList.remove('slide-left');
+  ensureMainTabTransitionLayers();
+
+  const currentMainIndex = MAIN_TAB_VIEWS.indexOf(currentView);
+  const nextMainIndex = MAIN_TAB_VIEWS.indexOf(viewId);
+  const isMainTabTransition = currentMainIndex >= 0 && nextMainIndex >= 0;
+
+  if (isMainTabTransition) {
+    // Requested behavior:
+    // Chats -> Friends/Profile => slide right
+    // Profile -> Chats/Friends => slide left
+    const currentLayer = getMainTabContentLayer(current);
+    const nextLayer = getMainTabContentLayer(next);
+
+    const slideRight = nextMainIndex > currentMainIndex;
+    if (slideRight) {
+      currentLayer?.classList.add('hidden');
+      currentLayer?.classList.remove('slide-left');
+    } else {
+      currentLayer?.classList.add('slide-left');
+      currentLayer?.classList.remove('hidden');
+    }
+
+    current.classList.add('tab-hidden');
+    current.classList.remove('hidden', 'slide-left');
+
+    next.classList.remove('hidden', 'slide-left', 'tab-hidden');
+    nextLayer?.classList.remove('hidden', 'slide-left');
   } else {
-    current.classList.add('slide-left');
-    current.classList.remove('hidden');
+    current.classList.remove('tab-hidden');
+    next.classList.remove('tab-hidden');
+
+    const goingBack = viewId === 'view-home' || viewId === 'view-login' || viewId === 'view-register';
+    if (goingBack) {
+      current.classList.add('hidden');
+      current.classList.remove('slide-left');
+    } else {
+      current.classList.add('slide-left');
+      current.classList.remove('hidden');
+    }
+
+    const currentLayer = getMainTabContentLayer(current);
+    if (currentLayer) {
+      const shouldHideLayer = current.classList.contains('hidden') || current.classList.contains('tab-hidden');
+      currentLayer.classList.toggle('hidden', shouldHideLayer);
+      if (!current.classList.contains('slide-left')) {
+        currentLayer.classList.remove('slide-left');
+      }
+    }
+
+    const nextLayer = getMainTabContentLayer(next);
+    if (nextLayer) {
+      nextLayer.classList.remove('hidden', 'slide-left');
+    }
   }
-  next.classList.remove('hidden', 'slide-left');
+
+  if (!isMainTabTransition) {
+    next.classList.remove('hidden', 'slide-left');
+  }
+
+  syncBottomNavActive(viewId);
+
   currentView = viewId;
 }
 
 function switchTab(el, viewId) {
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  el.classList.add('active');
+  syncBottomNavActive(viewId);
   navigate(viewId);
 }
 
@@ -47,3 +164,7 @@ function openChat(name, emoji, theme, viewId) {
   navigate(viewId);
   buildWaveform('waveform-demo', 28);
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  ensureMainTabTransitionLayers();
+});

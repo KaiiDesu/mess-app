@@ -101,6 +101,22 @@ function setChatHeaderPresenceStatus(status) {
   chatStatus.textContent = `● ${getPresenceStatusLabel(status)}`;
 }
 
+function setConnectionCheckBannerVisible(isVisible) {
+  ['home-connection-check', 'chat-connection-check'].forEach((id) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.classList.toggle('hidden', !isVisible);
+  });
+}
+
+function refreshConnectionCheckBanner() {
+  const hasToken = Boolean(getSocketToken());
+  const isOffline = navigator.onLine === false;
+  const socketReady = Boolean(window.appSocket && window.appSocket.connected);
+  const shouldShow = hasToken && (isOffline || !socketReady);
+  setConnectionCheckBannerVisible(shouldShow);
+}
+
 function getConversationSwipeTrack(row) {
   return row?.querySelector('.chat-swipe-body') || null;
 }
@@ -1302,6 +1318,7 @@ function enqueueInboundMessagePayload(payload) {
 function initSocket() {
   ensureAppForegroundTracking();
   startConversationsRefreshLoop();
+  refreshConnectionCheckBanner();
 
   if (typeof io === 'undefined') {
     console.warn('[socket] socket.io client library not loaded');
@@ -1321,6 +1338,7 @@ function initSocket() {
 
   window.appSocket.on('connect', () => {
     console.log('[socket] connected', window.appSocket.id);
+    refreshConnectionCheckBanner();
     loadConversations();
     refreshConversationsPeriodically(true);
     emitPresenceNetworkState();
@@ -1334,6 +1352,7 @@ function initSocket() {
 
   window.appSocket.on('connect_error', (err) => {
     console.error('[socket] connect_error:', err.message);
+    refreshConnectionCheckBanner();
     if (!token) {
       console.warn('[socket] No JWT found. Save one with connectSocketWithToken(token).');
     }
@@ -1341,6 +1360,7 @@ function initSocket() {
 
   window.appSocket.on('disconnect', (reason) => {
     console.log('[socket] disconnected:', reason);
+    refreshConnectionCheckBanner();
     stopPresenceHeartbeat();
   });
 
@@ -1505,10 +1525,16 @@ function initSocket() {
   window.addEventListener('focus', () => {
     refreshConversationsPeriodically(true);
     syncReadsIfVisible();
+    refreshConnectionCheckBanner();
   });
 
   window.addEventListener('online', () => {
     refreshConversationsPeriodically(true);
+    refreshConnectionCheckBanner();
+  });
+
+  window.addEventListener('offline', () => {
+    refreshConnectionCheckBanner();
   });
 }
 
@@ -1517,6 +1543,7 @@ function connectSocketWithToken(token) {
     window.appSocket.disconnect();
   }
   initSocket();
+  refreshConnectionCheckBanner();
 }
 
 function reconnectSocket() {
@@ -1524,6 +1551,7 @@ function reconnectSocket() {
     window.appSocket.disconnect();
   }
   initSocket();
+  refreshConnectionCheckBanner();
 }
 
 async function createConversationWithUser(withUserId) {

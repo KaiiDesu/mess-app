@@ -8,9 +8,10 @@ window.ZapTemplateParts.mainViews = String.raw`
         <div class="home-title">Chats</div>
         <div class="header-actions">
           <div class="icon-btn" onclick="openModal()"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg></div>
-          <div class="icon-btn" onclick="showToast()"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
         </div>
       </div>
+
+      <div class="connection-check hidden" id="home-connection-check">Checking internet connection...</div>
 
       <div class="search-bar">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -48,6 +49,7 @@ window.ZapTemplateParts.mainViews = String.raw`
             <span class="chat-header-name" id="chat-name">Alex Rivera</span>
           </button>
           <div class="chat-header-status" id="chat-status">● Active now</div>
+          <div class="connection-check connection-check-inline hidden" id="chat-connection-check">Checking internet connection...</div>
         </div>
         <div class="chat-header-actions">
           <div class="icon-btn" onclick="openThemePicker()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg></div>
