@@ -71,7 +71,13 @@ const getNicknameForOtherUser = async (conversationId, sharedOwnerUserId, target
 const getConversations = async (req, res) => {
   try {
     const userId = req.user.sub;
-    const { includeArchived = false, limit = 50, offset = 0 } = req.query;
+    const { includeArchived = false, limit, offset } = req.query;
+
+    const parsedLimit = Number.parseInt(limit, 10);
+    const parsedOffset = Number.parseInt(offset, 10);
+    const shouldPaginate = Number.isFinite(parsedLimit) && parsedLimit > 0;
+    const safeLimit = shouldPaginate ? Math.min(parsedLimit, 500) : null;
+    const safeOffset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
 
     let query = supabase
       .from('conversations')
@@ -88,9 +94,11 @@ const getConversations = async (req, res) => {
       query = query.eq('is_archived', false);
     }
 
-    const { data: conversations, error } = await query
-      .limit(Math.min(limit, 50))
-      .range(offset, offset + Math.min(limit, 50) - 1);
+    if (shouldPaginate) {
+      query = query.range(safeOffset, safeOffset + safeLimit - 1);
+    }
+
+    const { data: conversations, error } = await query;
 
     if (error) {
       logger.error('Get conversations error', { error: error.message });
@@ -255,7 +263,13 @@ const getMessages = async (req, res) => {
   try {
     const userId = req.user.sub;
     const { id } = req.params;
-    const { limit = 50, offset = 0 } = req.query;
+    const { limit, offset } = req.query;
+
+    const parsedLimit = Number.parseInt(limit, 10);
+    const parsedOffset = Number.parseInt(offset, 10);
+    const shouldPaginate = Number.isFinite(parsedLimit) && parsedLimit > 0;
+    const safeLimit = shouldPaginate ? Math.min(parsedLimit, 1000) : null;
+    const safeOffset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
 
     // Verify access
     const { data: conversation, error: convoError } = await supabase
@@ -286,9 +300,11 @@ const getMessages = async (req, res) => {
       )
       .eq('conversation_id', id)
       .order('created_at', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(Math.min(limit, 100))
-      .range(offset, offset + Math.min(limit, 100) - 1);
+      .order('id', { ascending: false });
+
+    if (shouldPaginate) {
+      messagesQuery = messagesQuery.range(safeOffset, safeOffset + safeLimit - 1);
+    }
 
     if (clearTimestamp) {
       messagesQuery = messagesQuery.gt('created_at', clearTimestamp);
