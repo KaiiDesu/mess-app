@@ -59,6 +59,10 @@ window.ZapTemplateParts.mainViews = String.raw`
 
       <button class="new-message-jump-pill hidden" id="new-message-jump-pill" onclick="jumpToLatestIncomingMessage()" type="button" aria-label="Jump to latest unseen message"></button>
 
+      <button class="scroll-bottom-bubble hidden" id="scroll-bottom-bubble" onclick="jumpToConversationBottom()" type="button" aria-label="Jump to bottom">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 10 12 16 18 10"></polyline></svg>
+      </button>
+
       <div class="messages" id="messages-container">
         <div class="enc-badge"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>Messages are end-to-end encrypted</span></div>
         <div class="conversation-loading-wrap" aria-live="polite" aria-busy="true">

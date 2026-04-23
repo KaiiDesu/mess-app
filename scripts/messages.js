@@ -16,6 +16,7 @@ let hasActiveTypingSignal = false;
 const REACTION_PICKER_EMOJIS = ['❤️', '😂', '😮', '😢', '👍', '🔥'];
 const MESSAGE_URL_PATTERN = /\bhttps?:\/\/[^\s<>"]+/gi;
 const LINK_PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000;
+const SCROLL_TO_BOTTOM_BUBBLE_THRESHOLD_PX = 260;
 
 const linkPreviewCache = new Map();
 const linkPreviewRequestByUrl = new Map();
@@ -893,6 +894,7 @@ function scrollMessagesToBottom(force = false) {
 
   if (force) {
     container.scrollTop = container.scrollHeight;
+    refreshScrollToBottomBubbleVisibility();
     return;
   }
 
@@ -900,6 +902,8 @@ function scrollMessagesToBottom(force = false) {
   if (distanceFromBottom < 80) {
     container.scrollTop = container.scrollHeight;
   }
+
+  refreshScrollToBottomBubbleVisibility();
 }
 
 function scrollOwnMessageRowIntoView(row) {
@@ -964,6 +968,39 @@ function hideIncomingMessageJumpPill() {
   pill.classList.add('hidden');
   pill.textContent = '';
   window.latestOffscreenIncomingMessageId = null;
+}
+
+function hideScrollToBottomBubble() {
+  const bubble = document.getElementById('scroll-bottom-bubble');
+  if (!bubble) return;
+  bubble.classList.add('hidden');
+}
+
+function refreshScrollToBottomBubbleVisibility() {
+  const bubble = document.getElementById('scroll-bottom-bubble');
+  const container = document.getElementById('messages-container');
+  if (!bubble || !container) return;
+
+  const shouldShow = getDistanceFromBottom(container) > SCROLL_TO_BOTTOM_BUBBLE_THRESHOLD_PX;
+  bubble.classList.toggle('hidden', !shouldShow);
+}
+
+function jumpToConversationBottom() {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+
+  container.scrollTo({
+    top: container.scrollHeight,
+    behavior: 'smooth'
+  });
+
+  requestAnimationFrame(() => {
+    refreshScrollToBottomBubbleVisibility();
+  });
+
+  setTimeout(() => {
+    refreshScrollToBottomBubbleVisibility();
+  }, 260);
 }
 
 function showIncomingMessageJumpPill(messageId, previewText) {
@@ -1616,6 +1653,7 @@ function clearRenderedMessages() {
     .querySelectorAll('.msg-row, .msg-date, #chat-empty-state, .enc-badge, .conversation-loading-wrap')
     .forEach((node) => node.remove());
   hideIncomingMessageJumpPill();
+  hideScrollToBottomBubble();
 }
 
 function createEncryptionBadgeElement() {
@@ -1638,6 +1676,7 @@ function renderConversationLoadingState() {
   loading.className = 'conversation-loading-wrap';
   loading.innerHTML = '<div class="conversation-loading-row"></div><div class="conversation-loading-row"></div><div class="conversation-loading-row"></div>';
   container.appendChild(loading);
+  hideScrollToBottomBubble();
 }
 
 function queueIncomingMessageDuringLoad(payload) {
@@ -1718,6 +1757,7 @@ function renderConversationMessages(messages) {
       container.appendChild(empty);
     }
     scrollMessagesToBottom(true);
+    refreshScrollToBottomBubbleVisibility();
     return;
   }
 
@@ -1770,6 +1810,7 @@ function renderConversationMessages(messages) {
   recomputeOutgoingStatusVisibility();
   scrollMessagesToBottom(true);
   keepConversationPinnedToBottomDuringMediaLoad(container);
+  refreshScrollToBottomBubbleVisibility();
 }
 
 const replies = [
@@ -2017,6 +2058,7 @@ window.renderConversationMessages = renderConversationMessages;
 window.renderConversationLoadingState = renderConversationLoadingState;
 window.addMessage = addMessage;
 window.jumpToLatestIncomingMessage = jumpToLatestIncomingMessage;
+window.jumpToConversationBottom = jumpToConversationBottom;
 window.showReactionPickerForMessageRow = showReactionPickerForMessageRow;
 window.hideReactionPicker = hideReactionPicker;
 window.updateReactionPickerSelectionState = updateReactionPickerSelectionState;
@@ -2037,5 +2079,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   container.addEventListener('scroll', () => {
     refreshIncomingMessageJumpPillVisibility();
+    refreshScrollToBottomBubbleVisibility();
   });
+
+  refreshScrollToBottomBubbleVisibility();
 });

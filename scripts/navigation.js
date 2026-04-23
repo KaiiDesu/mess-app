@@ -22,6 +22,10 @@ function syncBottomNavActive(viewId) {
 function getMainTabContentLayer(view) {
   if (!view) return null;
 
+  if (!MAIN_TAB_VIEWS.includes(view.id)) {
+    return null;
+  }
+
   let layer = view.querySelector(':scope > .tab-transition-layer');
   if (layer) return layer;
 
@@ -44,7 +48,23 @@ function getMainTabContentLayer(view) {
   return layer;
 }
 
+function cleanupNonMainTabTransitionLayers() {
+  const allViews = [...document.querySelectorAll('.view')];
+  allViews.forEach((view) => {
+    if (MAIN_TAB_VIEWS.includes(view.id)) return;
+
+    const layer = view.querySelector(':scope > .tab-transition-layer');
+    if (!layer) return;
+
+    const nodes = [...layer.childNodes];
+    nodes.forEach((node) => view.insertBefore(node, layer));
+    layer.remove();
+  });
+}
+
 function ensureMainTabTransitionLayers() {
+  cleanupNonMainTabTransitionLayers();
+
   MAIN_TAB_VIEWS.forEach((viewId) => {
     const view = document.getElementById(viewId);
     if (!view) return;
@@ -129,7 +149,7 @@ function navigate(viewId) {
       current.classList.remove('hidden');
     }
 
-    const currentLayer = getMainTabContentLayer(current);
+    const currentLayer = MAIN_TAB_VIEWS.includes(current.id) ? getMainTabContentLayer(current) : null;
     if (currentLayer) {
       const shouldHideLayer = current.classList.contains('hidden') || current.classList.contains('tab-hidden');
       currentLayer.classList.toggle('hidden', shouldHideLayer);
@@ -138,7 +158,7 @@ function navigate(viewId) {
       }
     }
 
-    const nextLayer = getMainTabContentLayer(next);
+    const nextLayer = MAIN_TAB_VIEWS.includes(next.id) ? getMainTabContentLayer(next) : null;
     if (nextLayer) {
       nextLayer.classList.remove('hidden', 'slide-left');
     }
