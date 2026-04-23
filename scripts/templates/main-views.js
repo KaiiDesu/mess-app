@@ -18,7 +18,30 @@ window.ZapTemplateParts.mainViews = String.raw`
         <input type="text" placeholder="Search conversations..." oninput="filterChats(this.value)">
       </div>
 
-      <div class="stories-row" id="stories-row"></div>
+      <div class="notes-strip" id="notes-strip">
+        <div class="notes-strip-head">
+          <div class="notes-strip-title">Notes</div>
+          <button class="notes-add-btn" type="button" onclick="openNoteComposer()">Add note</button>
+        </div>
+        <div class="notes-row" id="notes-row"></div>
+        <div class="note-composer hidden" id="note-composer">
+          <input
+            type="text"
+            id="note-input"
+            class="note-input"
+            maxlength="60"
+            placeholder="Share a quick note..."
+            oninput="onNoteInputChange(this)"
+          >
+          <div class="note-composer-meta">
+            <span id="note-char-count">0/60</span>
+            <div class="note-composer-actions">
+              <button class="note-btn ghost" type="button" onclick="closeNoteComposer()">Cancel</button>
+              <button class="note-btn" type="button" id="note-save-btn" onclick="saveMyNote()">Post</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="chat-list" id="chat-list">
         <div class="chat-loading-wrap" aria-live="polite" aria-busy="true">

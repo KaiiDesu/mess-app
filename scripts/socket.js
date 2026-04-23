@@ -1349,6 +1349,9 @@ function initSocket() {
     console.log('[socket] connected', window.appSocket.id);
     refreshConnectionCheckBanner();
     loadConversations();
+    if (typeof window.loadNotes === 'function') {
+      window.loadNotes();
+    }
     refreshConversationsPeriodically(true);
     emitPresenceNetworkState();
     emitPresenceAppState();
@@ -1406,6 +1409,18 @@ function initSocket() {
   window.appSocket.on('message:reaction_removed', (payload) => {
     if (typeof window.handleMessageReactionRemoved === 'function') {
       window.handleMessageReactionRemoved(payload);
+    }
+  });
+
+  window.appSocket.on('note:updated', (payload) => {
+    if (typeof window.handleIncomingNoteUpsert === 'function') {
+      window.handleIncomingNoteUpsert(payload);
+    }
+  });
+
+  window.appSocket.on('note:deleted', (payload) => {
+    if (typeof window.handleIncomingNoteDelete === 'function') {
+      window.handleIncomingNoteDelete(payload);
     }
   });
 
@@ -1528,6 +1543,9 @@ function initSocket() {
     if (document.visibilityState === 'visible') {
       refreshConversationsPeriodically(true);
       syncReadsIfVisible();
+      if (typeof window.loadNotes === 'function') {
+        window.loadNotes();
+      }
     }
   });
 
@@ -1535,11 +1553,17 @@ function initSocket() {
     refreshConversationsPeriodically(true);
     syncReadsIfVisible();
     refreshConnectionCheckBanner();
+    if (typeof window.loadNotes === 'function') {
+      window.loadNotes();
+    }
   });
 
   window.addEventListener('online', () => {
     refreshConversationsPeriodically(true);
     refreshConnectionCheckBanner();
+    if (typeof window.loadNotes === 'function') {
+      window.loadNotes();
+    }
   });
 
   window.addEventListener('offline', () => {

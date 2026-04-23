@@ -243,6 +243,22 @@
     CREATE INDEX IF NOT EXISTS idx_push_tokens_device ON push_notification_tokens(device_id);
 
     -- ========================================
+    -- USER_NOTES TABLE (24-hour ephemeral notes)
+    -- ========================================
+    CREATE TABLE IF NOT EXISTS user_notes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+
+    content VARCHAR(60) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_notes_expires_at ON user_notes(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_user_notes_updated_at ON user_notes(updated_at DESC);
+
+    -- ========================================
     -- NOTIFICATIONS TABLE
     -- ========================================
     CREATE TABLE IF NOT EXISTS notifications (
