@@ -116,14 +116,7 @@ function renderNotesStrip() {
   const myNote = notes.find((item) => (item.user_id || item.userId) === me) || null;
   const others = notes.filter((item) => (item.user_id || item.userId) !== me);
 
-  const addCard = `
-    <div class="note-item add" onclick="openNoteComposer()">
-      <div class="note-avatar-wrap"><div class="note-avatar">+</div></div>
-      <div class="note-name">Your note</div>
-    </div>
-  `;
-
-  const mineCard = myNote
+  const selfCard = myNote
     ? `
       <div class="note-item mine" onclick="openNoteComposer()">
         <div class="note-avatar-wrap">
@@ -133,7 +126,12 @@ function renderNotesStrip() {
         <div class="note-name">You</div>
       </div>
     `
-    : '';
+    : `
+      <div class="note-item add" onclick="openNoteComposer()">
+        <div class="note-avatar-wrap"><div class="note-avatar">+</div></div>
+        <div class="note-name">Your note</div>
+      </div>
+    `;
 
   const otherCards = others
     .map((note) => {
@@ -152,10 +150,10 @@ function renderNotesStrip() {
     })
     .join('');
 
-  row.innerHTML = `${addCard}${mineCard}${otherCards}`;
+  row.innerHTML = `${selfCard}${otherCards}`;
 
   if (!myNote && !others.length) {
-    row.innerHTML = `${addCard}<div class="note-empty">No active notes yet.</div>`;
+    row.innerHTML = `${selfCard}<div class="note-empty">No active notes yet.</div>`;
   }
 }
 
