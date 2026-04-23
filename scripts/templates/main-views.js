@@ -21,7 +21,6 @@ window.ZapTemplateParts.mainViews = String.raw`
       <div class="notes-strip" id="notes-strip">
         <div class="notes-strip-head">
           <div class="notes-strip-title">Notes</div>
-          <button class="notes-add-btn" type="button" onclick="openNoteComposer()">Add note</button>
         </div>
         <div class="notes-row" id="notes-row"></div>
         <div class="note-composer hidden" id="note-composer">

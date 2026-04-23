@@ -110,10 +110,11 @@
   .notes-add-btn { border:1px solid var(--border2); background:var(--bg3); color:var(--text2); border-radius:999px; padding:6px 10px; font-family:var(--font); font-size:11px; font-weight:600; cursor:pointer; }
   .notes-row { display:flex; gap:12px; overflow-x:auto; scrollbar-width:none; padding:2px 0 4px; }
   .notes-row::-webkit-scrollbar { display:none; }
-  .note-item { width:74px; min-width:74px; display:flex; flex-direction:column; align-items:center; gap:7px; cursor:pointer; }
-  .note-avatar-wrap { width:58px; height:58px; border-radius:50%; padding:2px; background:linear-gradient(135deg,#7c6bff,#44d7b6); position:relative; }
+  .note-item { width:78px; min-width:78px; display:flex; flex-direction:column; align-items:center; gap:7px; cursor:pointer; padding-top:18px; }
+  .note-avatar-wrap { width:58px; height:58px; border-radius:50%; padding:2px; background:linear-gradient(135deg,#7c6bff,#44d7b6); position:relative; overflow:visible; }
   .note-avatar { width:100%; height:100%; border-radius:50%; border:2px solid var(--bg); display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--bg3); color:var(--text); }
-  .note-bubble { position:absolute; left:44px; top:-2px; max-width:120px; min-height:26px; background:var(--bg3); border:1px solid var(--border2); border-radius:12px; padding:4px 7px; font-size:10.5px; font-weight:600; color:#efe9ff; line-height:1.25; box-shadow:0 6px 18px rgba(0,0,0,0.24); white-space:normal; word-break:break-word; }
+  .note-bubble { position:absolute; left:50%; top:-30px; transform:translateX(-50%); z-index:4; max-width:108px; min-height:24px; background:var(--bg3); border:1px solid var(--border2); border-radius:13px; padding:5px 8px; font-size:10.5px; font-weight:600; color:#efe9ff; line-height:1.22; box-shadow:0 8px 24px rgba(0,0,0,0.28); white-space:normal; word-break:break-word; text-align:center; }
+  .note-bubble::after { content:''; position:absolute; left:50%; bottom:-6px; transform:translateX(-50%); width:10px; height:10px; background:var(--bg3); border-right:1px solid var(--border2); border-bottom:1px solid var(--border2); rotate:45deg; }
   .note-name { max-width:74px; font-size:10.5px; color:var(--text2); text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .note-item.mine .note-avatar-wrap { background:linear-gradient(135deg,#34d399,#10b981); }
   .note-item.add .note-avatar { border-style:dashed; border-color:rgba(124,107,255,0.55); color:var(--accent2); font-size:30px; }
