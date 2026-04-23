@@ -1121,19 +1121,29 @@ async function openConversationById(conversationId) {
   joinConversation(conversationId);
 
   window.__zapConversationMessagesLoadingId = conversationId;
-  const loadingTimer =
-    typeof window.renderConversationLoadingState === 'function'
-      ? setTimeout(() => {
-          if (window.__zapConversationMessagesLoadingId !== conversationId) return;
-          window.renderConversationLoadingState();
-        }, 220)
-      : null;
+  
+  if (typeof window.renderConversationLoadingState === 'function') {
+    window.renderConversationLoadingState();
+  }
+  
+  const loadingTimer = typeof window.showConnectionCheckBannerInChat === 'function'
+    ? setTimeout(() => {
+        if (window.__zapConversationMessagesLoadingId !== conversationId) return;
+        window.showConnectionCheckBannerInChat();
+      }, 300)
+    : null;
 
   try {
     const messages = await fetchConversationMessages(conversationId);
     if (loadingTimer) {
       clearTimeout(loadingTimer);
     }
+
+    const existing = (window.conversations || []).find((item) => item.id === conversationId);
+    if (existing && Array.isArray(messages)) {
+      existing.messages = messages;
+    }
+
     if (typeof window.renderConversationMessages === 'function') {
       window.renderConversationMessages(messages);
     }
@@ -1144,7 +1154,6 @@ async function openConversationById(conversationId) {
       markMessagesAsRead(conversationId, messages);
     }
 
-    const existing = (window.conversations || []).find((item) => item.id === conversationId);
     if (existing) {
       existing.unreadCount = 0;
       renderConversationList(window.conversations);

@@ -64,12 +64,14 @@ function showInAppNotificationToast(options) {
   const msgEl = toast.querySelector('.toast-msg');
   const avEl = toast.querySelector('.toast-av');
 
+  if (!nameEl || !msgEl || !avEl) return;
+
   const senderName = options?.senderName || 'New message';
   const messageText = options?.messageText || 'You have a new message';
 
-  if (nameEl) nameEl.textContent = senderName;
-  if (msgEl) msgEl.textContent = messageText;
-  if (avEl) avEl.textContent = senderName.trim().charAt(0).toUpperCase() || '•';
+  nameEl.textContent = senderName;
+  msgEl.textContent = messageText;
+  avEl.textContent = senderName.trim().charAt(0).toUpperCase() || '•';
 
   toast.classList.add('show');
 
@@ -82,12 +84,16 @@ function showInAppNotificationToast(options) {
 
   const conversationId = options?.conversationId;
   if (conversationId) {
-    toast.onclick = () => {
+    toast.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       hideInAppNotificationToast();
       if (typeof openConversationById === 'function') {
         openConversationById(conversationId);
       }
     };
+  } else {
+    toast.onclick = null;
   }
 }
 
@@ -171,7 +177,7 @@ function showSystemNotification(options) {
             id: notificationId,
             title,
             body,
-            schedule: { at: new Date(Date.now() + 80) },
+            schedule: { at: new Date(Date.now() + 200) },
             channelId: 'zap-messages',
             extra: {
               conversationId
@@ -185,7 +191,11 @@ function showSystemNotification(options) {
     return;
   }
 
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!('Notification' in window)) return;
+  
+  if (Notification.permission !== 'granted') {
+    return;
+  }
 
   const title = options?.senderName || 'New message';
   const body = options?.messageText || 'You have a new message';
@@ -198,14 +208,16 @@ function showSystemNotification(options) {
       renotify: true
     });
 
-    notification.onclick = () => {
+    notification.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       window.focus();
       notification.close();
       if (conversationId && typeof openConversationById === 'function') {
         openConversationById(conversationId);
       }
     };
-  } catch (_) {
+  } catch (err) {
     // Ignore system notification errors in unsupported webviews.
   }
 }
@@ -246,7 +258,8 @@ function isConversationVisibleForNotification(conversationId) {
   if (!conversationId) return false;
 
   const activeConversationId = window.activeConversationId || null;
-  const inChatView = typeof currentView !== 'undefined' && currentView === 'view-chat';
+  const inChatView = (typeof window.currentView !== 'undefined' && window.currentView === 'view-chat') || 
+                     (typeof currentView !== 'undefined' && currentView === 'view-chat');
   const sameConversation = activeConversationId === conversationId;
   const appForeground = window.__zapAppForeground !== false;
   const docVisible = document.visibilityState === 'visible';
@@ -259,8 +272,12 @@ function notifyIncomingMessage(payload) {
   if (!payload || !shouldNotifyForIncomingMessage(payload)) return;
 
   const conversationId = payload?.conversation_id || payload?.conversationId;
+  if (!conversationId) return;
+
   const senderName = getNotificationSenderName(payload);
   const messageText = getNotificationPreviewText(payload);
+
+  if (!senderName || !messageText) return;
 
   const inVisibleActiveConversation = isConversationVisibleForNotification(conversationId);
 

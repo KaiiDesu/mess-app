@@ -976,6 +976,18 @@ function hideScrollToBottomBubble() {
   bubble.classList.add('hidden');
 }
 
+function showConnectionCheckBannerInChat() {
+  const chatConnectionCheck = document.getElementById('chat-connection-check');
+  if (!chatConnectionCheck) return;
+  chatConnectionCheck.classList.remove('hidden');
+}
+
+function hideConnectionCheckBannerInChat() {
+  const chatConnectionCheck = document.getElementById('chat-connection-check');
+  if (!chatConnectionCheck) return;
+  chatConnectionCheck.classList.add('hidden');
+}
+
 function refreshScrollToBottomBubbleVisibility() {
   const bubble = document.getElementById('scroll-bottom-bubble');
   const container = document.getElementById('messages-container');
@@ -1669,14 +1681,48 @@ function renderConversationLoadingState() {
   if (!container) return;
 
   clearRenderedMessages();
-
   container.appendChild(createEncryptionBadgeElement());
-
-  const loading = document.createElement('div');
-  loading.className = 'conversation-loading-wrap';
-  loading.innerHTML = '<div class="conversation-loading-row"></div><div class="conversation-loading-row"></div><div class="conversation-loading-row"></div>';
-  container.appendChild(loading);
   hideScrollToBottomBubble();
+
+  const conversationId = window.activeConversationId;
+  if (!conversationId) return;
+
+  const conversation = (window.conversations || []).find((c) => c.id === conversationId);
+  if (!conversation) return;
+
+  // Show previous messages from cache if available
+  const cachedMessages = conversation.messages || [];
+  if (Array.isArray(cachedMessages) && cachedMessages.length > 0) {
+    const currentUserId = getCurrentUserId();
+    const otherUserId = getActiveOtherUserId();
+
+    cachedMessages.forEach((message) => {
+      const senderId = message.sender_id || message.sender?.id;
+      const isMe = Boolean(currentUserId && senderId === currentUserId);
+      const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+      const seenByOther = Boolean(otherUserId && readBy.includes(otherUserId));
+      const initialDeliveryStatus = resolveInitialDeliveryStatus(message, isMe, currentUserId);
+
+      addMessage(
+        message.content || '',
+        isMe,
+        message.content_type === 'audio',
+        message.clientMessageId || message.client_message_id,
+        {
+          messageId: message.id,
+          createdAt: message.created_at,
+          contentType: message.content_type,
+          mediaUrl: message.mediaUrl || message.content,
+          fileName: message.file_name,
+          replyTo: message.replyTo || message.reply_to || null,
+          reactions: message.reactions,
+          deliveryStatus: isMe ? (seenByOther ? 'Seen' : initialDeliveryStatus || 'Delivered') : null
+        }
+      );
+    });
+  }
+
+  scrollMessagesToBottom(true);
 }
 
 function queueIncomingMessageDuringLoad(payload) {
@@ -1758,6 +1804,7 @@ function renderConversationMessages(messages) {
     }
     scrollMessagesToBottom(true);
     refreshScrollToBottomBubbleVisibility();
+    hideConnectionCheckBannerInChat();
     return;
   }
 
@@ -1811,6 +1858,7 @@ function renderConversationMessages(messages) {
   scrollMessagesToBottom(true);
   keepConversationPinnedToBottomDuringMediaLoad(container);
   refreshScrollToBottomBubbleVisibility();
+  hideConnectionCheckBannerInChat();
 }
 
 const replies = [
@@ -2059,6 +2107,8 @@ window.renderConversationLoadingState = renderConversationLoadingState;
 window.addMessage = addMessage;
 window.jumpToLatestIncomingMessage = jumpToLatestIncomingMessage;
 window.jumpToConversationBottom = jumpToConversationBottom;
+window.showConnectionCheckBannerInChat = showConnectionCheckBannerInChat;
+window.hideConnectionCheckBannerInChat = hideConnectionCheckBannerInChat;
 window.showReactionPickerForMessageRow = showReactionPickerForMessageRow;
 window.hideReactionPicker = hideReactionPicker;
 window.updateReactionPickerSelectionState = updateReactionPickerSelectionState;
