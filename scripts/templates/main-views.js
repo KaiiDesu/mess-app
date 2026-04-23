@@ -38,29 +38,12 @@ window.ZapTemplateParts.mainViews = String.raw`
 
           <div class="note-fullscreen-name" id="note-fullscreen-name">User</div>
           <div class="note-fullscreen-meta" id="note-fullscreen-meta">Shared with Friends · Expires in 24h</div>
-
-          <div class="note-fullscreen-editor hidden" id="note-fullscreen-editor">
-            <input
-              type="text"
-              id="note-input"
-              class="note-input"
-              maxlength="60"
-              placeholder="Share a quick note..."
-              oninput="onNoteInputChange(this)"
-            >
-            <div class="note-composer-meta">
-              <span id="note-char-count">0/60</span>
-              <div class="note-composer-actions">
-                <button class="note-btn ghost" type="button" onclick="closeNoteEditor()">Cancel</button>
-                <button class="note-btn" type="button" id="note-save-btn" onclick="saveMyNote()">Post</button>
-              </div>
-            </div>
-          </div>
+          <div class="note-fullscreen-count hidden" id="note-fullscreen-count">0/60</div>
         </div>
 
         <div class="note-fullscreen-actions" id="note-fullscreen-actions">
-          <button class="note-fullscreen-action" type="button">See activity</button>
-          <button class="note-fullscreen-action" type="button" onclick="openNoteEditor()">Replace note</button>
+          <button class="note-fullscreen-action" type="button" id="note-left-action" onclick="onNoteLeftAction()">See activity</button>
+          <button class="note-fullscreen-action" type="button" id="note-right-action" onclick="onNoteRightAction()">Replace note</button>
         </div>
       </div>
 

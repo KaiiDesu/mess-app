@@ -3,6 +3,8 @@ const NOTE_TTL_HOURS = 24;
 
 window.zapNotes = window.zapNotes || [];
 window.__zapActiveNoteUserId = null;
+window.__zapNoteEditing = false;
+window.__zapOriginalNoteText = '';
 
 function getNotesApiBaseUrl() {
   return window.ZAP_API_URL || 'http://localhost:3000';
@@ -95,36 +97,128 @@ function setNoteFullscreenVisible(isVisible) {
   panel.classList.toggle('hidden', !isVisible);
 }
 
+function setNoteBubbleEditable(isEditable) {
+  const bubble = document.getElementById('note-fullscreen-bubble');
+  if (!bubble) return;
+
+  bubble.setAttribute('contenteditable', isEditable ? 'true' : 'false');
+  bubble.setAttribute('spellcheck', isEditable ? 'true' : 'false');
+
+  if (isEditable) {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(bubble);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    bubble.focus();
+  }
+}
+
+function getActiveBubbleText() {
+  const bubble = document.getElementById('note-fullscreen-bubble');
+  if (!bubble) return '';
+  return String(bubble.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function refreshNoteEditCounter() {
+  const count = document.getElementById('note-fullscreen-count');
+  if (!count) return;
+
+  const length = getActiveBubbleText().length;
+  count.textContent = `${Math.min(length, NOTE_MAX_CHARS)}/${NOTE_MAX_CHARS}`;
+}
+
+function syncNoteActionButtons(isMine, isEditing) {
+  const left = document.getElementById('note-left-action');
+  const right = document.getElementById('note-right-action');
+  const count = document.getElementById('note-fullscreen-count');
+
+  if (!left || !right) return;
+
+  if (!isMine) {
+    left.classList.add('hidden');
+    right.classList.add('hidden');
+    if (count) {
+      count.classList.add('hidden');
+    }
+    return;
+  }
+
+  left.classList.remove('hidden');
+  right.classList.remove('hidden');
+
+  if (isEditing) {
+    left.textContent = 'Cancel';
+    right.textContent = 'Post';
+    if (count) {
+      count.classList.remove('hidden');
+      refreshNoteEditCounter();
+    }
+  } else {
+    left.textContent = 'See activity';
+    right.textContent = 'Replace note';
+    if (count) {
+      count.classList.add('hidden');
+    }
+  }
+}
+
 function openNoteEditor() {
-  const editor = document.getElementById('note-fullscreen-editor');
-  const actions = document.getElementById('note-fullscreen-actions');
-  const input = document.getElementById('note-input');
   const me = getCurrentNotesUserId();
   const note = getNoteByUserId(me);
+  const bubble = document.getElementById('note-fullscreen-bubble');
 
-  if (!editor || !input) return;
+  if (!bubble) return;
 
-  input.value = note?.content || '';
-  editor.classList.remove('hidden');
-  if (actions) {
-    actions.classList.add('hidden');
+  window.__zapNoteEditing = true;
+  window.__zapOriginalNoteText = note?.content || '';
+
+  if (!note) {
+    bubble.textContent = '';
   }
-  onNoteInputChange(input);
-  input.focus();
+
+  setNoteBubbleEditable(true);
+  syncNoteActionButtons(true, true);
 }
 
 function closeNoteEditor() {
-  const editor = document.getElementById('note-fullscreen-editor');
-  const actions = document.getElementById('note-fullscreen-actions');
+  const bubble = document.getElementById('note-fullscreen-bubble');
   const isMine = window.__zapActiveNoteUserId && window.__zapActiveNoteUserId === getCurrentNotesUserId();
 
-  if (editor) {
-    editor.classList.add('hidden');
+  window.__zapNoteEditing = false;
+
+  if (bubble) {
+    bubble.textContent = window.__zapOriginalNoteText || bubble.textContent || '';
   }
 
-  if (actions) {
-    actions.classList.toggle('hidden', !isMine);
+  setNoteBubbleEditable(false);
+  syncNoteActionButtons(Boolean(isMine), false);
+}
+
+function onNoteLeftAction() {
+  const isMine = window.__zapActiveNoteUserId && window.__zapActiveNoteUserId === getCurrentNotesUserId();
+  if (!isMine) return;
+
+  if (window.__zapNoteEditing) {
+    closeNoteEditor();
+    openNoteProfile(getCurrentNotesUserId());
+    return;
   }
+
+  // Placeholder for future activity screen.
+}
+
+function onNoteRightAction() {
+  const isMine = window.__zapActiveNoteUserId && window.__zapActiveNoteUserId === getCurrentNotesUserId();
+  if (!isMine) return;
+
+  if (window.__zapNoteEditing) {
+    saveMyNote();
+    return;
+  }
+
+  openNoteEditor();
 }
 
 function openNoteProfile(userId) {
@@ -140,7 +234,6 @@ function openNoteProfile(userId) {
   const name = document.getElementById('note-fullscreen-name');
   const meta = document.getElementById('note-fullscreen-meta');
   const actions = document.getElementById('note-fullscreen-actions');
-  const editor = document.getElementById('note-fullscreen-editor');
 
   if (!bubble || !avatar || !name || !meta) return;
 
@@ -155,12 +248,14 @@ function openNoteProfile(userId) {
   name.textContent = displayName;
   meta.textContent = note ? `${age ? `${age} · ` : ''}Shared with Friends · Expires in 24h` : 'Shared with Friends · Expires in 24h';
 
+  window.__zapNoteEditing = false;
+  window.__zapOriginalNoteText = note?.content || '';
+  setNoteBubbleEditable(false);
+
   if (actions) {
     actions.classList.toggle('hidden', !isMine);
   }
-  if (editor) {
-    editor.classList.add('hidden');
-  }
+  syncNoteActionButtons(isMine, false);
 
   setNoteFullscreenVisible(true);
 
@@ -256,23 +351,16 @@ function renderNotesStrip() {
 }
 
 function onNoteInputChange(el) {
-  const input = el || document.getElementById('note-input');
-  if (!input) return;
+  const bubble = document.getElementById('note-fullscreen-bubble');
+  if (!bubble || !window.__zapNoteEditing) return;
 
-  if (input.value.length > NOTE_MAX_CHARS) {
-    input.value = input.value.slice(0, NOTE_MAX_CHARS);
+  const value = getActiveBubbleText();
+  if (value.length > NOTE_MAX_CHARS) {
+    bubble.textContent = value.slice(0, NOTE_MAX_CHARS);
+    setNoteBubbleEditable(true);
   }
 
-  const count = document.getElementById('note-char-count');
-  if (count) {
-    count.textContent = `${input.value.length}/${NOTE_MAX_CHARS}`;
-  }
-
-  const saveBtn = document.getElementById('note-save-btn');
-  if (saveBtn) {
-    const text = String(input.value || '').trim();
-    saveBtn.disabled = text.length < 1 || text.length > NOTE_MAX_CHARS;
-  }
+  refreshNoteEditCounter();
 }
 
 function openNoteComposer() {
@@ -281,7 +369,8 @@ function openNoteComposer() {
 
 function closeNoteComposer() {
   setNoteFullscreenVisible(false);
-  closeNoteEditor();
+  window.__zapNoteEditing = false;
+  setNoteBubbleEditable(false);
   window.__zapActiveNoteUserId = null;
 }
 
@@ -316,20 +405,23 @@ async function loadNotes() {
 }
 
 async function saveMyNote() {
-  const input = document.getElementById('note-input');
-  const saveBtn = document.getElementById('note-save-btn');
-  if (!input || !saveBtn) return;
+  const isMine = window.__zapActiveNoteUserId && window.__zapActiveNoteUserId === getCurrentNotesUserId();
+  if (!isMine) return;
 
-  const content = String(input.value || '').trim();
+  const rightButton = document.getElementById('note-right-action');
+  const leftButton = document.getElementById('note-left-action');
+
+  const content = getActiveBubbleText();
   if (!content || content.length > NOTE_MAX_CHARS) {
-    onNoteInputChange(input);
+    refreshNoteEditCounter();
     return;
   }
 
   const token = getNotesAuthToken();
   if (!token) return;
 
-  saveBtn.disabled = true;
+  if (rightButton) rightButton.disabled = true;
+  if (leftButton) leftButton.disabled = true;
 
   try {
     const response = await fetch(`${getNotesApiBaseUrl()}/api/notes/me`, {
@@ -343,7 +435,8 @@ async function saveMyNote() {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      saveBtn.disabled = false;
+      if (rightButton) rightButton.disabled = false;
+      if (leftButton) leftButton.disabled = false;
       return;
     }
 
@@ -352,12 +445,14 @@ async function saveMyNote() {
       renderNotesStrip();
     }
 
-    closeNoteEditor();
+    window.__zapNoteEditing = false;
+    setNoteBubbleEditable(false);
     openNoteProfile(getCurrentNotesUserId());
   } catch (_) {
     // Ignore transient network failures; socket sync or next refresh can reconcile.
   } finally {
-    saveBtn.disabled = false;
+    if (rightButton) rightButton.disabled = false;
+    if (leftButton) leftButton.disabled = false;
   }
 }
 
@@ -379,6 +474,8 @@ window.closeNoteComposer = closeNoteComposer;
 window.openNoteProfile = openNoteProfile;
 window.openNoteEditor = openNoteEditor;
 window.closeNoteEditor = closeNoteEditor;
+window.onNoteLeftAction = onNoteLeftAction;
+window.onNoteRightAction = onNoteRightAction;
 window.onNoteInputChange = onNoteInputChange;
 window.saveMyNote = saveMyNote;
 window.loadNotes = loadNotes;
@@ -388,4 +485,11 @@ window.handleIncomingNoteDelete = handleIncomingNoteDelete;
 document.addEventListener('DOMContentLoaded', () => {
   renderNotesStrip();
   loadNotes();
+
+  const bubble = document.getElementById('note-fullscreen-bubble');
+  if (bubble) {
+    bubble.addEventListener('input', () => {
+      onNoteInputChange();
+    });
+  }
 });

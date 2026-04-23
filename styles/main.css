@@ -137,14 +137,14 @@
   .note-fullscreen-card { position:relative; width:130px; height:160px; display:flex; align-items:flex-end; justify-content:center; margin-bottom:10px; }
   .note-fullscreen-avatar { width:118px; height:118px; border-radius:50%; border:3px solid rgba(255,255,255,0.14); background:#cfd2d8; color:#10131b; font-size:52px; font-weight:600; display:flex; align-items:center; justify-content:center; }
   .note-fullscreen-bubble { position:absolute; top:2px; left:50%; transform:translateX(-50%); width:max-content; max-width:172px; min-height:34px; padding:10px 13px; border-radius:18px; background:linear-gradient(135deg,#242c1a,#1d2317); color:#f3f8ea; border:1px solid rgba(150,168,120,0.24); font-size:17px; font-weight:500; line-height:1.26; box-shadow:0 10px 28px rgba(0,0,0,0.28); overflow-wrap:anywhere; text-align:center; }
+  .note-fullscreen-bubble[contenteditable="true"] { cursor:text; outline:none; border-color:rgba(167,196,131,0.65); box-shadow:0 0 0 3px rgba(167,196,131,0.18), 0 10px 28px rgba(0,0,0,0.28); }
   .note-fullscreen-bubble::after { content:''; position:absolute; bottom:-9px; left:50%; transform:translateX(-50%); width:17px; height:17px; background:linear-gradient(135deg,#242c1a,#1d2317); border-radius:7px; rotate:45deg; border-right:1px solid rgba(150,168,120,0.24); border-bottom:1px solid rgba(150,168,120,0.24); }
   .note-fullscreen-name { margin-top:8px; font-size:16px; font-weight:700; color:#eef1f7; }
   .note-fullscreen-meta { margin-top:4px; font-size:12px; color:#9aa2b5; }
-  .note-fullscreen-editor { width:100%; max-width:440px; margin-top:18px; border:1px solid var(--border2); background:var(--bg3); border-radius:14px; padding:11px 12px; text-align:left; }
-  .note-fullscreen-editor.hidden { display:none; }
-  .note-fullscreen-editor .note-input { font-size:18px; color:#f0eeff; }
-  .note-fullscreen-editor .note-composer-meta { margin-top:10px; }
+  .note-fullscreen-count { margin-top:8px; font-size:12px; color:#a6b1c8; }
+  .note-fullscreen-count.hidden { display:none; }
   .note-fullscreen-actions { height:88px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 18px 20px; }
+  .note-fullscreen-actions.hidden { display:none; }
   .note-fullscreen-action { flex:1; border:1px solid var(--border2); background:var(--bg3); color:#e5e7ef; border-radius:999px; min-height:42px; font-family:var(--font); font-size:14px; font-weight:600; cursor:pointer; }
   .note-fullscreen-action:active { background:var(--bg4); }
 
