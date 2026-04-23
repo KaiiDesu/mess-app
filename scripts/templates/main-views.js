@@ -23,22 +23,44 @@ window.ZapTemplateParts.mainViews = String.raw`
           <div class="notes-strip-title">Notes</div>
         </div>
         <div class="notes-row" id="notes-row"></div>
-        <div class="note-composer hidden" id="note-composer">
-          <input
-            type="text"
-            id="note-input"
-            class="note-input"
-            maxlength="60"
-            placeholder="Share a quick note..."
-            oninput="onNoteInputChange(this)"
-          >
-          <div class="note-composer-meta">
-            <span id="note-char-count">0/60</span>
-            <div class="note-composer-actions">
-              <button class="note-btn ghost" type="button" onclick="closeNoteComposer()">Cancel</button>
-              <button class="note-btn" type="button" id="note-save-btn" onclick="saveMyNote()">Post</button>
+      </div>
+
+      <div class="note-fullscreen hidden" id="note-fullscreen">
+        <div class="note-fullscreen-top">
+          <button class="note-fullscreen-close" type="button" onclick="closeNoteComposer()" aria-label="Close notes view">✕</button>
+        </div>
+
+        <div class="note-fullscreen-center">
+          <div class="note-fullscreen-card">
+            <div class="note-fullscreen-bubble" id="note-fullscreen-bubble"></div>
+            <div class="note-fullscreen-avatar" id="note-fullscreen-avatar">•</div>
+          </div>
+
+          <div class="note-fullscreen-name" id="note-fullscreen-name">User</div>
+          <div class="note-fullscreen-meta" id="note-fullscreen-meta">Shared with Friends · Expires in 24h</div>
+
+          <div class="note-fullscreen-editor hidden" id="note-fullscreen-editor">
+            <input
+              type="text"
+              id="note-input"
+              class="note-input"
+              maxlength="60"
+              placeholder="Share a quick note..."
+              oninput="onNoteInputChange(this)"
+            >
+            <div class="note-composer-meta">
+              <span id="note-char-count">0/60</span>
+              <div class="note-composer-actions">
+                <button class="note-btn ghost" type="button" onclick="closeNoteEditor()">Cancel</button>
+                <button class="note-btn" type="button" id="note-save-btn" onclick="saveMyNote()">Post</button>
+              </div>
             </div>
           </div>
+        </div>
+
+        <div class="note-fullscreen-actions" id="note-fullscreen-actions">
+          <button class="note-fullscreen-action" type="button">See activity</button>
+          <button class="note-fullscreen-action" type="button" onclick="openNoteEditor()">Replace note</button>
         </div>
       </div>
 

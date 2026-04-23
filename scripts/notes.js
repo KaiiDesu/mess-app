@@ -2,6 +2,7 @@ const NOTE_MAX_CHARS = 60;
 const NOTE_TTL_HOURS = 24;
 
 window.zapNotes = window.zapNotes || [];
+window.__zapActiveNoteUserId = null;
 
 function getNotesApiBaseUrl() {
   return window.ZAP_API_URL || 'http://localhost:3000';
@@ -69,6 +70,103 @@ function getMineNote() {
   const userId = getCurrentNotesUserId();
   if (!userId) return null;
   return (window.zapNotes || []).find((item) => item.user_id === userId || item.userId === userId) || null;
+}
+
+function getNoteByUserId(userId) {
+  if (!userId) return null;
+  return (window.zapNotes || []).find((item) => (item.user_id || item.userId) === userId) || null;
+}
+
+function getNoteAgeLabel(note) {
+  const createdAt = parseNotesServerDate(note?.updated_at || note?.updatedAt || note?.created_at);
+  if (Number.isNaN(createdAt.getTime())) return '';
+  const diffMs = Math.max(0, Date.now() - createdAt.getTime());
+  const diffMin = Math.floor(diffMs / (60 * 1000));
+  if (diffMin < 1) return 'now';
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h`;
+  return `${Math.floor(diffH / 24)}d`;
+}
+
+function setNoteFullscreenVisible(isVisible) {
+  const panel = document.getElementById('note-fullscreen');
+  if (!panel) return;
+  panel.classList.toggle('hidden', !isVisible);
+}
+
+function openNoteEditor() {
+  const editor = document.getElementById('note-fullscreen-editor');
+  const actions = document.getElementById('note-fullscreen-actions');
+  const input = document.getElementById('note-input');
+  const me = getCurrentNotesUserId();
+  const note = getNoteByUserId(me);
+
+  if (!editor || !input) return;
+
+  input.value = note?.content || '';
+  editor.classList.remove('hidden');
+  if (actions) {
+    actions.classList.add('hidden');
+  }
+  onNoteInputChange(input);
+  input.focus();
+}
+
+function closeNoteEditor() {
+  const editor = document.getElementById('note-fullscreen-editor');
+  const actions = document.getElementById('note-fullscreen-actions');
+  const isMine = window.__zapActiveNoteUserId && window.__zapActiveNoteUserId === getCurrentNotesUserId();
+
+  if (editor) {
+    editor.classList.add('hidden');
+  }
+
+  if (actions) {
+    actions.classList.toggle('hidden', !isMine);
+  }
+}
+
+function openNoteProfile(userId) {
+  const me = getCurrentNotesUserId();
+  const targetUserId = userId || me;
+  const note = getNoteByUserId(targetUserId);
+  const isMine = targetUserId === me;
+
+  window.__zapActiveNoteUserId = targetUserId;
+
+  const bubble = document.getElementById('note-fullscreen-bubble');
+  const avatar = document.getElementById('note-fullscreen-avatar');
+  const name = document.getElementById('note-fullscreen-name');
+  const meta = document.getElementById('note-fullscreen-meta');
+  const actions = document.getElementById('note-fullscreen-actions');
+  const editor = document.getElementById('note-fullscreen-editor');
+
+  if (!bubble || !avatar || !name || !meta) return;
+
+  const displayName = isMine
+    ? 'You'
+    : note?.display_name || note?.userName || 'Friend';
+  const content = note?.content || (isMine ? 'Share a quick note...' : 'No note yet');
+  const age = note ? getNoteAgeLabel(note) : '';
+
+  bubble.textContent = content;
+  avatar.textContent = getNoteAvatar(displayName);
+  name.textContent = displayName;
+  meta.textContent = note ? `${age ? `${age} · ` : ''}Shared with Friends · Expires in 24h` : 'Shared with Friends · Expires in 24h';
+
+  if (actions) {
+    actions.classList.toggle('hidden', !isMine);
+  }
+  if (editor) {
+    editor.classList.add('hidden');
+  }
+
+  setNoteFullscreenVisible(true);
+
+  if (isMine && !note) {
+    openNoteEditor();
+  }
 }
 
 function upsertNoteInState(note) {
@@ -139,7 +237,7 @@ function renderNotesStrip() {
       const displayName = note.display_name || note.userName || 'Friend';
       const content = String(note.content || '').trim();
       return `
-        <div class="note-item" data-user-id="${escapeNotesHtml(userId)}">
+        <div class="note-item" data-user-id="${escapeNotesHtml(userId)}" onclick="openNoteProfile('${escapeNotesHtml(userId)}')">
           <div class="note-avatar-wrap">
             <div class="note-avatar">${getNoteAvatar(displayName)}</div>
             <div class="note-bubble">${escapeNotesHtml(content)}</div>
@@ -178,21 +276,13 @@ function onNoteInputChange(el) {
 }
 
 function openNoteComposer() {
-  const composer = document.getElementById('note-composer');
-  const input = document.getElementById('note-input');
-  if (!composer || !input) return;
-
-  const mine = getMineNote();
-  input.value = mine?.content || '';
-  composer.classList.remove('hidden');
-  onNoteInputChange(input);
-  input.focus();
+  openNoteProfile(getCurrentNotesUserId());
 }
 
 function closeNoteComposer() {
-  const composer = document.getElementById('note-composer');
-  if (!composer) return;
-  composer.classList.add('hidden');
+  setNoteFullscreenVisible(false);
+  closeNoteEditor();
+  window.__zapActiveNoteUserId = null;
 }
 
 async function loadNotes() {
@@ -262,7 +352,8 @@ async function saveMyNote() {
       renderNotesStrip();
     }
 
-    closeNoteComposer();
+    closeNoteEditor();
+    openNoteProfile(getCurrentNotesUserId());
   } catch (_) {
     // Ignore transient network failures; socket sync or next refresh can reconcile.
   } finally {
@@ -285,6 +376,9 @@ function handleIncomingNoteDelete(payload) {
 
 window.openNoteComposer = openNoteComposer;
 window.closeNoteComposer = closeNoteComposer;
+window.openNoteProfile = openNoteProfile;
+window.openNoteEditor = openNoteEditor;
+window.closeNoteEditor = closeNoteEditor;
 window.onNoteInputChange = onNoteInputChange;
 window.saveMyNote = saveMyNote;
 window.loadNotes = loadNotes;
