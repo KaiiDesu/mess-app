@@ -906,6 +906,32 @@ function scrollMessagesToBottom(force = false) {
   refreshScrollToBottomBubbleVisibility();
 }
 
+function forceConversationToLatest(framePasses = 4) {
+  const container = document.getElementById('messages-container');
+  if (!container) return;
+
+  const passes = Number.isFinite(framePasses) && framePasses > 0 ? Math.floor(framePasses) : 1;
+  let remaining = passes;
+
+  const pin = () => {
+    container.scrollTop = container.scrollHeight;
+    refreshScrollToBottomBubbleVisibility();
+
+    remaining -= 1;
+    if (remaining > 0) {
+      requestAnimationFrame(pin);
+    }
+  };
+
+  pin();
+
+  // Late layout shifts (fonts/media/overlays) can still nudge the scroll position up.
+  setTimeout(() => {
+    container.scrollTop = container.scrollHeight;
+    refreshScrollToBottomBubbleVisibility();
+  }, 120);
+}
+
 function scrollOwnMessageRowIntoView(row) {
   const container = document.getElementById('messages-container');
   if (!container || !row) return;
@@ -1722,7 +1748,7 @@ function renderConversationLoadingState() {
     });
   }
 
-  scrollMessagesToBottom(true);
+  forceConversationToLatest(5);
 }
 
 function queueIncomingMessageDuringLoad(payload) {
@@ -1805,6 +1831,7 @@ function renderConversationMessages(messages) {
     scrollMessagesToBottom(true);
     refreshScrollToBottomBubbleVisibility();
     hideConnectionCheckBannerInChat();
+    forceConversationToLatest(4);
     return;
   }
 
@@ -1859,6 +1886,7 @@ function renderConversationMessages(messages) {
   keepConversationPinnedToBottomDuringMediaLoad(container);
   refreshScrollToBottomBubbleVisibility();
   hideConnectionCheckBannerInChat();
+  forceConversationToLatest(6);
 }
 
 const replies = [
@@ -1973,6 +2001,7 @@ async function handleIncomingSocketMessage(payload) {
     if (shouldFollowIncoming) {
       scrollIncomingMessageRowIntoView(insertedRow);
       hideIncomingMessageJumpPill();
+      forceConversationToLatest(3);
       return;
     }
 
@@ -2024,7 +2053,7 @@ function showRemoteTypingIndicator(payload) {
     container.appendChild(row);
 
     if (shouldFollowIncoming) {
-      scrollMessagesToBottom(true);
+      forceConversationToLatest(3);
     }
   }
 
@@ -2107,6 +2136,7 @@ window.renderConversationLoadingState = renderConversationLoadingState;
 window.addMessage = addMessage;
 window.jumpToLatestIncomingMessage = jumpToLatestIncomingMessage;
 window.jumpToConversationBottom = jumpToConversationBottom;
+window.forceConversationToLatest = forceConversationToLatest;
 window.showConnectionCheckBannerInChat = showConnectionCheckBannerInChat;
 window.hideConnectionCheckBannerInChat = hideConnectionCheckBannerInChat;
 window.showReactionPickerForMessageRow = showReactionPickerForMessageRow;

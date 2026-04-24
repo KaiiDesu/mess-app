@@ -795,6 +795,33 @@ function upsertConversationFromIncomingMessage(payload) {
   };
   existing.updated_at = payload.created_at || new Date().toISOString();
 
+  // Keep cached conversation history warm so reopening a chat never jumps to stale points.
+  if (payload?.id) {
+    const history = Array.isArray(existing.messages) ? [...existing.messages] : [];
+    const alreadyInHistory = history.some((msg) => msg?.id && msg.id === payload.id);
+    if (!alreadyInHistory) {
+      history.push({
+        id: payload.id,
+        conversation_id: conversationId,
+        sender_id: senderId,
+        content: payload.content || '',
+        content_type: payload.content_type || (payload.mediaUrl ? 'image' : 'text'),
+        created_at: payload.created_at || new Date().toISOString(),
+        mediaUrl: payload.mediaUrl || payload.content || '',
+        file_name: payload.fileName || null,
+        reply_to: payload.reply_to || payload.replyTo || null,
+        reactions: Array.isArray(payload.reactions) ? payload.reactions : []
+      });
+
+      // Keep cache bounded while preserving most recent timeline.
+      if (history.length > 1200) {
+        history.splice(0, history.length - 1200);
+      }
+
+      existing.messages = history;
+    }
+  }
+
   const isViewingThisConversation =
     currentView === 'view-chat' && window.activeConversationId === conversationId;
 
@@ -808,6 +835,7 @@ function upsertConversationFromIncomingMessage(payload) {
 
   const reordered = [existing, ...existingList.filter((c) => c.id !== conversationId)];
   window.conversations = reordered;
+  writeCachedConversations(reordered);
   renderConversationList(reordered);
 }
 
@@ -1147,6 +1175,9 @@ async function openConversationById(conversationId) {
     if (typeof window.renderConversationMessages === 'function') {
       window.renderConversationMessages(messages);
     }
+    if (typeof window.forceConversationToLatest === 'function') {
+      window.forceConversationToLatest(5);
+    }
 
     syncConversationLastMessageSeenStateFromMessages(conversationId, messages);
 
@@ -1162,8 +1193,12 @@ async function openConversationById(conversationId) {
     if (loadingTimer) {
       clearTimeout(loadingTimer);
     }
-    if (typeof window.renderConversationMessages === 'function') {
-      window.renderConversationMessages([]);
+    // Keep cached/visible conversation content on transient failures instead of wiping the chat.
+    if (typeof window.renderConversationLoadingState === 'function') {
+      window.renderConversationLoadingState();
+    }
+    if (typeof window.forceConversationToLatest === 'function') {
+      window.forceConversationToLatest(4);
     }
     console.warn('[chat] failed loading messages:', error?.message || error);
   } finally {
