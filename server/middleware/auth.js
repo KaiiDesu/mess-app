@@ -17,17 +17,19 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
 
-    // Check if user is banned (gracefully handle if columns don't exist)
+    // Check if user is banned (only if columns exist)
+    // Use service role to bypass RLS
     try {
       const { data: users, error: userError } = await supabase
         .from('users')
-        .select('id, is_banned, ban_reason')
+        .select('is_banned, ban_reason')
         .eq('auth_id', decoded.sub)
         .limit(1);
 
       if (!userError && users && users.length > 0) {
         const user = users[0];
-        if (user.is_banned) {
+        // Only check if is_banned column exists (null if column doesn't exist)
+        if (user.is_banned === true) {
           logger.warn(`Banned user login attempt: ${decoded.sub}`, { 
             reason: user.ban_reason 
           });
@@ -39,8 +41,9 @@ const verifyToken = async (req, res, next) => {
         }
       }
     } catch (banCheckErr) {
-      // If ban check fails (e.g., columns don't exist yet), continue anyway
-      logger.debug('Ban check skipped', { error: banCheckErr.message });
+      // If ban check fails, just log and continue
+      // This allows the app to work even if columns don't exist yet
+      logger.debug('Ban check error (columns may not exist yet)', { error: banCheckErr.message });
     }
 
     next();
@@ -64,17 +67,19 @@ const verifySocketToken = async (token, callback) => {
       return callback(new Error('Missing sub claim'), false);
     }
 
-    // Check if user is banned (gracefully handle if columns don't exist)
+    // Check if user is banned (only if columns exist)
+    // Use service role to bypass RLS
     try {
       const { data: users, error: userError } = await supabase
         .from('users')
-        .select('id, is_banned, ban_reason')
+        .select('is_banned, ban_reason')
         .eq('auth_id', decoded.sub)
         .limit(1);
 
       if (!userError && users && users.length > 0) {
         const user = users[0];
-        if (user.is_banned) {
+        // Only check if is_banned column exists (null if column doesn't exist)
+        if (user.is_banned === true) {
           logger.warn(`Banned user socket attempt: ${decoded.sub}`, { 
             reason: user.ban_reason 
           });
@@ -82,8 +87,8 @@ const verifySocketToken = async (token, callback) => {
         }
       }
     } catch (banCheckErr) {
-      // If ban check fails (e.g., columns don't exist yet), continue anyway
-      logger.debug('Socket ban check skipped', { error: banCheckErr.message });
+      // If ban check fails, just log and continue
+      logger.debug('Socket ban check error (columns may not exist yet)', { error: banCheckErr.message });
     }
 
     callback(null, decoded);
