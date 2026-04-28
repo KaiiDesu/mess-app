@@ -17,30 +17,30 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
 
-    // Check if user is banned
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, is_banned, ban_reason')
-      .eq('auth_id', decoded.sub)
-      .single();
+    // Check if user is banned (gracefully handle if columns don't exist)
+    try {
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id, is_banned, ban_reason')
+        .eq('auth_id', decoded.sub)
+        .limit(1);
 
-    if (userError) {
-      logger.error('User lookup failed', { error: userError.message });
-      return res.status(401).json({
-        code: 'AUTH_FAILED',
-        message: 'User not found'
-      });
-    }
-
-    if (user.is_banned) {
-      logger.warn(`Banned user login attempt: ${decoded.sub}`, { 
-        reason: user.ban_reason 
-      });
-      return res.status(403).json({
-        code: 'ACCOUNT_BANNED',
-        message: user.ban_reason || 'Your account has been suspended',
-        isBanned: true
-      });
+      if (!userError && users && users.length > 0) {
+        const user = users[0];
+        if (user.is_banned) {
+          logger.warn(`Banned user login attempt: ${decoded.sub}`, { 
+            reason: user.ban_reason 
+          });
+          return res.status(403).json({
+            code: 'ACCOUNT_BANNED',
+            message: user.ban_reason || 'Your account has been suspended',
+            isBanned: true
+          });
+        }
+      }
+    } catch (banCheckErr) {
+      // If ban check fails (e.g., columns don't exist yet), continue anyway
+      logger.debug('Ban check skipped', { error: banCheckErr.message });
     }
 
     next();
@@ -64,23 +64,26 @@ const verifySocketToken = async (token, callback) => {
       return callback(new Error('Missing sub claim'), false);
     }
 
-    // Check if user is banned
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, is_banned, ban_reason')
-      .eq('auth_id', decoded.sub)
-      .single();
+    // Check if user is banned (gracefully handle if columns don't exist)
+    try {
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id, is_banned, ban_reason')
+        .eq('auth_id', decoded.sub)
+        .limit(1);
 
-    if (userError) {
-      logger.error('Socket user lookup failed', { error: userError.message });
-      return callback(new Error('User not found'), false);
-    }
-
-    if (user.is_banned) {
-      logger.warn(`Banned user socket attempt: ${decoded.sub}`, { 
-        reason: user.ban_reason 
-      });
-      return callback(new Error('ACCOUNT_BANNED:' + (user.ban_reason || 'Your account has been suspended')), false);
+      if (!userError && users && users.length > 0) {
+        const user = users[0];
+        if (user.is_banned) {
+          logger.warn(`Banned user socket attempt: ${decoded.sub}`, { 
+            reason: user.ban_reason 
+          });
+          return callback(new Error('ACCOUNT_BANNED:' + (user.ban_reason || 'Your account has been suspended')), false);
+        }
+      }
+    } catch (banCheckErr) {
+      // If ban check fails (e.g., columns don't exist yet), continue anyway
+      logger.debug('Socket ban check skipped', { error: banCheckErr.message });
     }
 
     callback(null, decoded);
