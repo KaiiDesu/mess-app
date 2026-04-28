@@ -343,45 +343,61 @@ const getMessages = async (req, res) => {
 
     let replyRelationByMessageId = new Map();
     if (messageIds.length && !replyRelationTableUnavailable) {
-      const { data: replyRows, error: replyRowsError } = await supabase
-        .from('message_replies')
-        .select('message_id, parent_message_id, parent_sender_name, parent_snippet')
-        .in('message_id', messageIds);
+      // Validate and sanitize message IDs to avoid Bad Request from PostgREST
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const validMessageIds = messageIds.filter((m) => typeof m === 'string' && uuidRe.test(m));
 
-      if (replyRowsError) {
-        const tableMissing =
-          replyRowsError.code === '42P01' ||
-          replyRowsError.code === 'PGRST205' ||
-          String(replyRowsError.message || '').includes('message_replies');
-
-        // Log full error for debugging (includes status/code/details)
-        logger.warn('Failed to query message_replies', {
-          error: replyRowsError,
-          conversationId: id,
-          messageIdsSample: messageIds.slice(0, 10)
-        });
-
-        if (tableMissing) {
-          replyRelationTableUnavailable = true;
-          logger.warn('Reply fallback load disabled: message_replies table is missing');
-        } else {
-          // If Bad Request or other client error, skip reply fallback but continue
-          // so messages still load for the conversation.
-          logger.warn('Reply fallback disabled for this request due to query error', {
-            code: replyRowsError.code || null,
-            status: replyRowsError.status || null,
-            message: replyRowsError.message || String(replyRowsError),
-            conversationId: id
-          });
-        }
+      if (!validMessageIds.length) {
+        logger.warn('No valid message IDs to query for reply fallback', { conversationId: id, messageIdsSample: messageIds.slice(0, 10) });
       } else {
         try {
-          replyRelationByMessageId = new Map(
-            (replyRows || []).map((row) => [row.message_id, row])
-          );
-        } catch (mapErr) {
-          logger.warn('Failed to build replyRelation map', { error: mapErr.message, conversationId: id });
-          replyRelationByMessageId = new Map();
+          // Query in batches to avoid large URL/param issues and reduce RLS surprises
+          const batchSize = 50;
+          let accumulatedRows = [];
+
+          for (let i = 0; i < validMessageIds.length; i += batchSize) {
+            const chunk = validMessageIds.slice(i, i + batchSize);
+            const { data: chunkRows, error: chunkErr } = await supabase
+              .from('message_replies')
+              .select('message_id, parent_message_id, parent_sender_name, parent_snippet')
+              .in('message_id', chunk);
+
+            if (chunkErr) {
+              const tableMissing =
+                chunkErr.code === '42P01' ||
+                chunkErr.code === 'PGRST205' ||
+                String(chunkErr.message || '').includes('message_replies');
+
+              logger.warn('Failed to query message_replies (chunk)', {
+                error: chunkErr,
+                conversationId: id,
+                chunkSize: chunk.length,
+                chunkSample: chunk.slice(0, 5)
+              });
+
+              if (tableMissing) {
+                replyRelationTableUnavailable = true;
+                logger.warn('Reply fallback load disabled: message_replies table is missing');
+                break;
+              }
+
+              // For other errors (Bad Request), skip this fallback but continue
+              logger.warn('Skipping reply fallback chunk due to error', { conversationId: id });
+              continue;
+            }
+
+            accumulatedRows = accumulatedRows.concat(chunkRows || []);
+          }
+
+          // Build the map from accumulated rows
+          try {
+            replyRelationByMessageId = new Map((accumulatedRows || []).map((row) => [row.message_id, row]));
+          } catch (mapErr) {
+            logger.warn('Failed to build replyRelation map', { error: mapErr.message, conversationId: id });
+            replyRelationByMessageId = new Map();
+          }
+        } catch (outerErr) {
+          logger.warn('Unexpected error while loading reply fallback', { error: outerErr.message, conversationId: id });
         }
       }
     }
