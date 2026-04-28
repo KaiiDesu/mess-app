@@ -18,6 +18,7 @@ function isAppForeground() {
 window.userPresenceById = window.userPresenceById || {};
 let activeConversationSwipeRow = null;
 let conversationSwipePointer = null;
+let accountBanReason = null; // Stores ban reason if account is banned
 let suppressConversationClickUntil = 0;
 let conversationsRefreshTimer = null;
 let conversationsRefreshInFlight = null;
@@ -51,6 +52,16 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = NETWORK_REQUE
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function handleAccountBanError(payload) {
+  if (payload && payload.code === 'ACCOUNT_BANNED') {
+    accountBanReason = payload.message || 'Your account has been suspended';
+    console.warn('[api] Account ban detected:', accountBanReason);
+    refreshConnectionCheckBanner();
+    return true;
+  }
+  return false;
 }
 
 function areReadReceiptsEnabled() {
@@ -106,6 +117,15 @@ function setConnectionCheckBannerVisible(isVisible) {
     const node = document.getElementById(id);
     if (!node) return;
     node.classList.toggle('hidden', !isVisible);
+
+    // Update message based on ban status
+    if (isVisible) {
+      if (accountBanReason) {
+        node.textContent = accountBanReason;
+      } else {
+        node.textContent = 'Checking internet connection...';
+      }
+    }
   });
 }
 
@@ -113,7 +133,8 @@ function refreshConnectionCheckBanner() {
   const hasToken = Boolean(getSocketToken());
   const isOffline = navigator.onLine === false;
   const socketReady = Boolean(window.appSocket && window.appSocket.connected);
-  const shouldShow = hasToken && (isOffline || !socketReady);
+  const isBanned = Boolean(accountBanReason);
+  const shouldShow = hasToken && (isOffline || !socketReady || isBanned);
   setConnectionCheckBannerVisible(shouldShow);
 }
 
@@ -932,8 +953,10 @@ async function loadConversations(options = {}) {
   const requestId = ++conversationsLoadRequestId;
   const token = getSocketToken();
   if (!token) {
-    renderConversationList([]);
-    window.conversations = [];
+    if (!window.conversations || !window.conversations.length) {
+      renderConversationList([]);
+      window.conversations = [];
+    }
     return;
   }
 
@@ -959,12 +982,21 @@ async function loadConversations(options = {}) {
     });
 
     if (!response.ok) {
+      // Check if this is an account ban
+      if (handleAccountBanError(payload)) {
+        return;
+      }
+
       if (requestId < conversationsLoadAppliedRequestId) {
         return;
       }
       conversationsLoadAppliedRequestId = requestId;
-      renderConversationList([]);
-      window.conversations = [];
+      if (!window.conversations || !window.conversations.length) {
+        renderConversationList([]);
+        window.conversations = [];
+      } else {
+        renderConversationList(window.conversations);
+      }
       return;
     }
 
@@ -973,10 +1005,42 @@ async function loadConversations(options = {}) {
     }
     conversationsLoadAppliedRequestId = requestId;
 
-    window.conversations = (payload.conversations || []).map((conversation) => ({
+    const incoming = (payload.conversations || []).map((conversation) => ({
       ...conversation,
       unreadCount: Number(conversation.unreadCount || conversation.unread_count || 0)
     }));
+
+    const current = Array.isArray(window.conversations) ? window.conversations : [];
+    const mergedMap = new Map();
+
+    current.forEach((conversation) => {
+      if (conversation?.id) {
+        mergedMap.set(conversation.id, conversation);
+      }
+    });
+
+    incoming.forEach((conversation) => {
+      const existing = mergedMap.get(conversation.id);
+      if (existing) {
+        mergedMap.set(conversation.id, {
+          ...existing,
+          ...conversation,
+          messages: Array.isArray(conversation.messages)
+            ? conversation.messages
+            : existing.messages || [],
+          unreadCount: Number(conversation.unreadCount || conversation.unread_count || existing.unreadCount || 0)
+        });
+      } else {
+        mergedMap.set(conversation.id, conversation);
+      }
+    });
+
+    window.conversations = [...mergedMap.values()].sort((a, b) => {
+      const aTime = parseServerDateToDeviceLocal(a.updated_at || a.lastMessage?.created_at || '').getTime();
+      const bTime = parseServerDateToDeviceLocal(b.updated_at || b.lastMessage?.created_at || '').getTime();
+      return bTime - aTime;
+    });
+
     window.conversations.forEach((conversation) => {
       const otherUser = conversation?.otherUser;
       if (otherUser?.id && !window.userPresenceById[otherUser.id]) {
@@ -997,6 +1061,8 @@ async function loadConversations(options = {}) {
       conversationsLoadAppliedRequestId = requestId;
       renderConversationList([]);
       window.conversations = [];
+    } else {
+      renderConversationList(window.conversations);
     }
   }
 }
@@ -1399,6 +1465,16 @@ function initSocket() {
 
   window.appSocket.on('connect_error', (err) => {
     console.error('[socket] connect_error:', err.message);
+
+    // Check if this is an account ban error
+    if (err.message && err.message.includes('ACCOUNT_BANNED')) {
+      const [, banMessage] = err.message.split(':');
+      accountBanReason = banMessage || 'Your account has been suspended';
+      console.warn('[socket] Account is banned:', accountBanReason);
+    } else {
+      accountBanReason = null;
+    }
+
     refreshConnectionCheckBanner();
     if (!token) {
       console.warn('[socket] No JWT found. Save one with connectSocketWithToken(token).');
