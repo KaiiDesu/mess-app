@@ -354,19 +354,35 @@ const getMessages = async (req, res) => {
           replyRowsError.code === 'PGRST205' ||
           String(replyRowsError.message || '').includes('message_replies');
 
+        // Log full error for debugging (includes status/code/details)
+        logger.warn('Failed to query message_replies', {
+          error: replyRowsError,
+          conversationId: id,
+          messageIdsSample: messageIds.slice(0, 10)
+        });
+
         if (tableMissing) {
           replyRelationTableUnavailable = true;
           logger.warn('Reply fallback load disabled: message_replies table is missing');
         } else {
-          logger.warn('Failed to load message reply fallback rows', {
-            error: replyRowsError.message,
+          // If Bad Request or other client error, skip reply fallback but continue
+          // so messages still load for the conversation.
+          logger.warn('Reply fallback disabled for this request due to query error', {
+            code: replyRowsError.code || null,
+            status: replyRowsError.status || null,
+            message: replyRowsError.message || String(replyRowsError),
             conversationId: id
           });
         }
       } else {
-        replyRelationByMessageId = new Map(
-          (replyRows || []).map((row) => [row.message_id, row])
-        );
+        try {
+          replyRelationByMessageId = new Map(
+            (replyRows || []).map((row) => [row.message_id, row])
+          );
+        } catch (mapErr) {
+          logger.warn('Failed to build replyRelation map', { error: mapErr.message, conversationId: id });
+          replyRelationByMessageId = new Map();
+        }
       }
     }
 
