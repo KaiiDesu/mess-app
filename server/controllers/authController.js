@@ -66,7 +66,8 @@ const register = async (req, res) => {
       .slice(0, 50);
 
     // Create user profile
-    const { data: user, error: profileError } = await supabase
+    // Insert profile row. Use `.select()` (returns array) and handle RLS/permission errors
+    const { data: userRows, error: profileError } = await supabase
       .from('users')
       .insert({
         auth_id: authUserId,
@@ -77,11 +78,30 @@ const register = async (req, res) => {
         avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
         is_active: true
       })
-      .select()
-      .single();
+      .select();
 
     if (profileError) {
       logger.error('Profile creation error', { error: profileError.message });
+
+      // Common cause: RLS (row-level security) blocks inserts when using anon key.
+      if (String(profileError.message || '').toLowerCase().includes('row-level')) {
+        return res.status(500).json({
+          code: 'RLS_VIOLATION',
+          message:
+            'Failed to create profile due to row-level security policy. Ensure the server has a valid SUPABASE_SERVICE_ROLE_KEY or adjust your RLS policies.'
+        });
+      }
+
+      return res.status(500).json({
+        code: 'PROFILE_CREATION_FAILED',
+        message: 'Failed to create user profile'
+      });
+    }
+
+    const user = Array.isArray(userRows) ? userRows[0] : userRows;
+
+    if (!user) {
+      logger.error('Profile creation returned no rows', { userRows });
       return res.status(500).json({
         code: 'PROFILE_CREATION_FAILED',
         message: 'Failed to create user profile'
