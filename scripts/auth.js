@@ -473,6 +473,31 @@ function signOut() {
   if (window.appSocket) {
     window.appSocket.disconnect();
   }
+  // Clear cached conversations and UI state to avoid leaking previous user's data
+  try {
+    localStorage.removeItem('zap_cached_conversations');
+  } catch (_) {}
+
+  window.conversations = [];
+  window.activeConversationId = null;
+
+  if (typeof renderConversationList === 'function') {
+    try {
+      renderConversationList([]);
+    } catch (_) {}
+  }
+
+  if (typeof renderConversationMessages === 'function') {
+    try {
+      renderConversationMessages([]);
+    } catch (_) {}
+  }
+
+  // Reset profile/chat headers
+  const chatName = document.getElementById('chat-name');
+  if (chatName) chatName.textContent = '';
+  const chatAv = document.getElementById('chat-av');
+  if (chatAv) chatAv.innerHTML = '';
 
   navigate('view-login');
 }

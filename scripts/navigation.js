@@ -89,6 +89,16 @@ function navigate(viewId) {
   const next = document.getElementById(viewId);
   if (!next) return;
 
+  // Maintain a simple navigation history for back behavior.
+  window.__zapViewHistory = window.__zapViewHistory || [];
+  // Push currentView when navigating to a different view
+  if (currentView && currentView !== viewId) {
+    const last = window.__zapViewHistory[window.__zapViewHistory.length - 1];
+    if (last !== currentView) {
+      window.__zapViewHistory.push(currentView);
+    }
+  }
+
   if (currentView === 'view-chat' && viewId !== 'view-chat') {
     const msgInput = document.getElementById('msg-input');
     if (msgInput && document.activeElement === msgInput) {
@@ -172,6 +182,26 @@ function navigate(viewId) {
 
   currentView = viewId;
 }
+
+function goBack() {
+  window.__zapViewHistory = window.__zapViewHistory || [];
+  const prev = window.__zapViewHistory.pop();
+  if (prev && document.getElementById(prev)) {
+    navigate(prev);
+    return true;
+  }
+
+  // If no history, fallback to home view (don't exit the app)
+  if (currentView !== 'view-home') {
+    navigate('view-home');
+    return true;
+  }
+
+  // At home and nothing to go back to - consume event to avoid app exit
+  return false;
+}
+
+window.goBack = goBack;
 
 function switchTab(el, viewId) {
   syncBottomNavActive(viewId);

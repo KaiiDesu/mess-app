@@ -318,6 +318,42 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof loadAcceptedFriends === 'function') {
     loadAcceptedFriends();
   }
+
+  // Handle hardware back button (Capacitor / Cordova) and browser popstate.
+  const backHandler = (ev) => {
+    try {
+      const handled = typeof window.goBack === 'function' ? window.goBack() : false;
+      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+      // If goBack returned false and we're at home, consume event to avoid app exit.
+      return handled;
+    } catch (err) {
+      console.error('Back handler error', err);
+      return false;
+    }
+  };
+
+  // Cordova 'backbutton'
+  document.addEventListener('backbutton', (e) => backHandler(e));
+
+  // Capacitor App backButton listener (if available)
+  try {
+    if (window.Capacitor && window.Capacitor.App && typeof window.Capacitor.App.addListener === 'function') {
+      window.Capacitor.App.addListener('backButton', (data) => {
+        backHandler(data);
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // Browser back (popstate) — convert to internal navigation
+  window.addEventListener('popstate', (e) => {
+    const handled = backHandler(e);
+    if (handled) {
+      // push a new state to avoid leaving the single-page app
+      history.pushState({}, '');
+    }
+  });
 });
 
 document.addEventListener('click', e => {
