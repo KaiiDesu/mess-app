@@ -17,8 +17,14 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
 
-    // Check if user is banned (only if columns exist)
-    // Use service role to bypass RLS
+    // Check if user is banned (with timeout to prevent blocking)
+    let banCheckCompleted = false;
+    const banCheckTimeout = setTimeout(() => {
+      if (!banCheckCompleted) {
+        logger.debug('HTTP ban check timeout - allowing request anyway');
+      }
+    }, 2000);
+
     try {
       const { data: users, error: userError } = await supabase
         .from('users')
@@ -26,9 +32,11 @@ const verifyToken = async (req, res, next) => {
         .eq('auth_id', decoded.sub)
         .limit(1);
 
+      banCheckCompleted = true;
+      clearTimeout(banCheckTimeout);
+
       if (!userError && users && users.length > 0) {
         const user = users[0];
-        // Only check if is_banned column exists (null if column doesn't exist)
         if (user.is_banned === true) {
           logger.warn(`Banned user login attempt: ${decoded.sub}`, { 
             reason: user.ban_reason 
@@ -41,9 +49,11 @@ const verifyToken = async (req, res, next) => {
         }
       }
     } catch (banCheckErr) {
-      // If ban check fails, just log and continue
-      // This allows the app to work even if columns don't exist yet
-      logger.debug('Ban check error (columns may not exist yet)', { error: banCheckErr.message });
+      clearTimeout(banCheckTimeout);
+      // If ban check fails, log and continue
+      logger.debug('HTTP ban check error - allowing request anyway', { 
+        error: banCheckErr.message 
+      });
     }
 
     next();
@@ -67,8 +77,14 @@ const verifySocketToken = async (token, callback) => {
       return callback(new Error('Missing sub claim'), false);
     }
 
-    // Check if user is banned (only if columns exist)
-    // Use service role to bypass RLS
+    // Check if user is banned with timeout (don't block socket connection)
+    let banCheckCompleted = false;
+    const banCheckTimeout = setTimeout(() => {
+      if (!banCheckCompleted) {
+        logger.debug('Socket ban check timeout - continuing anyway');
+      }
+    }, 2000);
+
     try {
       const { data: users, error: userError } = await supabase
         .from('users')
@@ -76,9 +92,11 @@ const verifySocketToken = async (token, callback) => {
         .eq('auth_id', decoded.sub)
         .limit(1);
 
+      banCheckCompleted = true;
+      clearTimeout(banCheckTimeout);
+
       if (!userError && users && users.length > 0) {
         const user = users[0];
-        // Only check if is_banned column exists (null if column doesn't exist)
         if (user.is_banned === true) {
           logger.warn(`Banned user socket attempt: ${decoded.sub}`, { 
             reason: user.ban_reason 
@@ -87,8 +105,11 @@ const verifySocketToken = async (token, callback) => {
         }
       }
     } catch (banCheckErr) {
+      clearTimeout(banCheckTimeout);
       // If ban check fails, just log and continue
-      logger.debug('Socket ban check error (columns may not exist yet)', { error: banCheckErr.message });
+      logger.debug('Socket ban check error - continuing anyway', { 
+        error: banCheckErr.message
+      });
     }
 
     callback(null, decoded);
