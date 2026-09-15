@@ -83,6 +83,16 @@ const register = async (req, res) => {
     if (profileError) {
       logger.error('Profile creation error', { error: profileError.message });
 
+      // Avoid leaving an Auth account without a matching application profile.
+      await supabase.auth.admin.deleteUser(authUserId);
+
+      if (profileError.code === '23505') {
+        return res.status(409).json({
+          code: 'PROFILE_ALREADY_EXISTS',
+          message: 'Email, username, or phone number is already in use'
+        });
+      }
+
       // Common cause: RLS (row-level security) blocks inserts when using anon key.
       if (String(profileError.message || '').toLowerCase().includes('row-level')) {
         return res.status(500).json({
