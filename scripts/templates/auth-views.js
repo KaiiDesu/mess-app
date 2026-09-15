@@ -7,15 +7,15 @@ window.ZapTemplateParts.authViews = String.raw`
         <div class="auth-orb"></div>
         <div class="auth-orb2"></div>
         <div class="logo">⚡ WOF</div>
-        <div class="logo-sub">End-to-end encrypted</div>
+        <div class="logo-sub">Chat App ni Kaii</div>
         <div class="auth-form">
           <div>
             <div class="input-label">Email or phone</div>
-            <input class="inp" type="text" placeholder="you@example.com" id="login-email">
+            <input class="inp" type="text" placeholder="Email Address" id="login-email">
           </div>
           <div>
             <div class="input-label">Password</div>
-            <input class="inp" type="password" placeholder="••••••••" id="login-pass">
+            <input class="inp" type="password" placeholder="Password" id="login-pass">
           </div>
           <label class="remember-row" for="login-remember">
             <input class="remember-check" type="checkbox" id="login-remember" checked>
