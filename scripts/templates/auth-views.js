@@ -23,8 +23,8 @@ window.ZapTemplateParts.authViews = String.raw`
           </label>
           <button class="btn-primary" onclick="loginAccount()">Sign in</button>
           <div class="divider">or continue with</div>
-          <button class="btn-ghost" onclick="navigate('view-home')">🍎  Sign in with Apple</button>
-          <button class="btn-ghost" onclick="navigate('view-home')">🔵  Sign in with Google</button>
+          <button class="btn-ghost" onclick="navigate('view-home')">(NOT WORKING YET) Sign in with Apple</button>
+          <button class="btn-ghost" onclick="navigate('view-home')">(NOT WORKING YET) Sign in with Google</button>
           <div class="auth-switch">New here? <span onclick="navigate('view-register')">Create account</span></div>
         </div>
       </div>
