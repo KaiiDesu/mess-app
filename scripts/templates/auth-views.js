@@ -6,7 +6,7 @@ window.ZapTemplateParts.authViews = String.raw`
       <div class="auth-bg">
         <div class="auth-orb"></div>
         <div class="auth-orb2"></div>
-        <div class="logo">⚡ Zap</div>
+        <div class="logo">⚡ WOF</div>
         <div class="logo-sub">End-to-end encrypted</div>
         <div class="auth-form">
           <div>

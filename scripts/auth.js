@@ -11,7 +11,7 @@ function showServerRecoveryNotice() {
 
   if (typeof window.showInAppNotificationToast === 'function') {
     window.showInAppNotificationToast({
-      senderName: 'Zap',
+      senderName: 'WOF',
       messageText: message
     });
     return;

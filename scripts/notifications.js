@@ -303,13 +303,13 @@ window.ensureSystemNotificationPermissionWithFeedback = async () => {
   const result = await ensureSystemNotificationPermission();
   if (result === 'unsupported') {
     showInAppNotificationToast({
-      senderName: 'Zap',
+      senderName: 'WOF',
       messageText: 'System notification prompt is not supported in this app build.'
     });
   }
   if (result === 'denied') {
     showInAppNotificationToast({
-      senderName: 'Zap',
+      senderName: 'WOF',
       messageText: 'Notification permission denied. You can enable it in app settings.'
     });
   }
