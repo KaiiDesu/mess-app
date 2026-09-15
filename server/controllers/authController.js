@@ -255,8 +255,112 @@ const refreshToken = async (req, res) => {
   }
 };
 
+const adminResetUserPassword = async (req, res) => {
+  try {
+    const { targetUserId, targetAuthUserId, targetEmail, newPassword, displayName } = req.body;
+
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({
+        code: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters'
+      });
+    }
+
+    if (!targetUserId && !targetAuthUserId && !targetEmail) {
+      return res.status(400).json({
+        code: 'INVALID_INPUT',
+        message: 'One of targetUserId, targetAuthUserId, or targetEmail is required'
+      });
+    }
+
+    let authUserId = targetAuthUserId;
+
+    if (!authUserId) {
+      let query = supabase.from('users').select('id, auth_id, email').limit(1);
+
+      if (targetUserId) {
+        query = query.eq('id', targetUserId);
+      } else {
+        query = query.eq('email', targetEmail);
+      }
+
+      const { data: rows, error: lookupError } = await query;
+      const targetUser = Array.isArray(rows) ? rows[0] : rows;
+
+      if (lookupError || !targetUser) {
+        return res.status(404).json({
+          code: 'USER_NOT_FOUND',
+          message: 'Target user not found'
+        });
+      }
+
+      authUserId = targetUser.auth_id;
+    }
+
+    const authUpdate = {
+      password: newPassword
+    };
+
+    if (typeof displayName === 'string' && displayName.trim()) {
+      authUpdate.user_metadata = {
+        display_name: displayName.trim().slice(0, 100)
+      };
+    }
+
+    const { data, error } = await supabase.auth.admin.updateUserById(authUserId, authUpdate);
+
+    if (error) {
+      logger.error('Admin password reset failed', {
+        adminUserId: req.adminUser?.id,
+        targetAuthUserId: authUserId,
+        error: error.message
+      });
+      return res.status(400).json({
+        code: 'RESET_FAILED',
+        message: error.message
+      });
+    }
+
+    if (authUpdate.user_metadata) {
+      const { error: profileError } = await supabase
+        .from('users')
+        .update({ display_name: authUpdate.user_metadata.display_name })
+        .eq('auth_id', authUserId);
+
+      if (profileError) {
+        logger.error('Admin profile update failed after auth update', {
+          targetAuthUserId: authUserId,
+          error: profileError.message
+        });
+        return res.status(500).json({
+          code: 'PROFILE_UPDATE_FAILED',
+          message: 'Password updated, but display name could not be updated'
+        });
+      }
+    }
+
+    logger.warn('Admin password reset completed', {
+      adminUserId: req.adminUser?.id,
+      adminEmail: req.adminUser?.email,
+      targetAuthUserId: authUserId
+    });
+
+    return res.json({
+      success: true,
+      targetAuthUserId: data?.user?.id || authUserId
+    });
+  } catch (err) {
+    logger.error('Admin password reset error', { error: err.message });
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reset password'
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
-  refreshToken
+  refreshToken,
+  adminResetUserPassword
 };

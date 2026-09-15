@@ -31,5 +31,9 @@
   },
   "engines": {
     "node": ">=16.0.0"
-  }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
 }

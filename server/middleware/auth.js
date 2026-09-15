@@ -119,7 +119,61 @@ const verifySocketToken = async (token, callback) => {
   }
 };
 
+const getSuperAdminEmails = () => {
+  return String(process.env.SUPER_ADMIN_EMAILS || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+};
+
+const requireSuperAdmin = async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+
+    if (!userId) {
+      return res.status(401).json({
+        code: 'AUTH_FAILED',
+        message: 'Missing authenticated user context'
+      });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('id', userId)
+      .single();
+
+    if (error || !user) {
+      return res.status(403).json({
+        code: 'FORBIDDEN',
+        message: 'Admin access denied'
+      });
+    }
+
+    const allowedEmails = getSuperAdminEmails();
+    const userEmail = String(user.email || '').toLowerCase();
+
+    if (!allowedEmails.includes(userEmail)) {
+      logger.warn('Super admin access denied', { userId, userEmail });
+      return res.status(403).json({
+        code: 'FORBIDDEN',
+        message: 'Super admin access required'
+      });
+    }
+
+    req.adminUser = user;
+    next();
+  } catch (err) {
+    logger.error('Super admin authorization failed', { error: err.message });
+    return res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to authorize super admin'
+    });
+  }
+};
+
 module.exports = {
   verifyToken,
-  verifySocketToken
+  verifySocketToken,
+  requireSuperAdmin
 };

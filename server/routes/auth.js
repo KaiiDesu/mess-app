@@ -1,6 +1,7 @@
 // server/routes/auth.js - Authentication endpoints
 const express = require('express');
 const authController = require('../controllers/authController');
+const { verifyToken, requireSuperAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -12,5 +13,8 @@ router.post('/login', authController.login);
 
 // POST /api/auth/refresh
 router.post('/refresh', authController.refreshToken);
+
+// POST /api/auth/admin/reset-password
+router.post('/admin/reset-password', verifyToken, requireSuperAdmin, authController.adminResetUserPassword);
 
 module.exports = router;
